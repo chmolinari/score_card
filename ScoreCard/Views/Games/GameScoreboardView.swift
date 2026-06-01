@@ -20,6 +20,12 @@ struct GameScoreboardView: View {
     @State private var showCloseConfirmation = false
     @State private var showSeatingSetup = false
 
+    // Shown once when a competitor first reaches the target, inviting the user to
+    // end the game. If they decline, the board locks (see `isLockedAtTarget`)
+    // until the over-target score is corrected back down.
+    @State private var showTargetReachedPrompt = false
+    @State private var declinedTargetEnd = false
+
     // Total score entries the game had at the start of the current hand. "Next
     // Hand" stays disabled until at least one point is scored beyond this, then
     // is reset back to the current total when the hand is advanced — so it's
@@ -35,6 +41,19 @@ struct GameScoreboardView: View {
 
     /// A point must be scored in the current hand before the deal can pass.
     private var canAdvanceHand: Bool { totalEntryCount > handBaselineEntryCount }
+
+    /// Competitors who have hit (or passed) the target score, if one is set.
+    private var winners: [GameParticipant] { game.winnersAtTarget }
+
+    /// Comma-separated names of the competitors at the target, for the prompt.
+    private var winnerNames: String {
+        winners.map(\.displayName).joined(separator: ", ")
+    }
+
+    /// True once someone reaches the target. While this holds, the board is
+    /// "locked": no points can be added and the deal can't pass — the only move
+    /// is to end the game or to reduce an over-target score (to fix a miscount).
+    private var isLockedAtTarget: Bool { !winners.isEmpty }
 
     var body: some View {
         // Compute every competitor's total once per render (summing each one's
@@ -58,7 +77,13 @@ struct GameScoreboardView: View {
 
             Section("Scores") {
                 ForEach(Array(ranked.enumerated()), id: \.element.participant.persistentModelID) { index, entry in
-                    ScoreboardRow(rank: index + 1, participant: entry.participant, total: entry.score, target: target) {
+                    let overTarget = target.map { entry.score >= $0 } ?? false
+                    ScoreboardRow(rank: index + 1,
+                                  participant: entry.participant,
+                                  total: entry.score,
+                                  target: target,
+                                  isLocked: isLockedAtTarget,
+                                  isOverTarget: overTarget) {
                         scoringParticipant = entry.participant
                     }
                 }
@@ -97,6 +122,23 @@ struct GameScoreboardView: View {
             Button("Keep Playing", role: .cancel) {}
         } message: {
             Text("The final scores will be saved to your history. You can't add more points after ending.")
+        }
+        .confirmationDialog("End the game?",
+                            isPresented: $showTargetReachedPrompt,
+                            titleVisibility: .visible) {
+            Button("End Game", role: .destructive) { closeGame() }
+            Button("Not Yet", role: .cancel) { declinedTargetEnd = true }
+        } message: {
+            Text("\(winnerNames) reached the \(game.targetPoints ?? 0)-point target. End the game and record the result? If the score was added by mistake, choose Not Yet and undo the last score to keep playing.")
+        }
+        .onChange(of: isLockedAtTarget) { _, reached in
+            if reached {
+                // Only nudge once per time the target is crossed; re-arm for the
+                // next crossing once the situation has been resolved.
+                if !declinedTargetEnd { showTargetReachedPrompt = true }
+            } else {
+                declinedTargetEnd = false
+            }
         }
         .onAppear {
             // Scoring a hand can be a fast flurry of taps. Turn off autosave
@@ -149,7 +191,7 @@ struct GameScoreboardView: View {
                         Label("Next Hand", systemImage: "arrow.turn.down.right")
                     }
                     .buttonStyle(.bordered)
-                    .disabled(!canAdvanceHand)
+                    .disabled(!canAdvanceHand || isLockedAtTarget)
                 }
                 if let next = game.nextDealer(dealingDirection) {
                     Text("Next to deal: \(next.name)")
@@ -210,7 +252,7 @@ struct GameScoreboardView: View {
         return Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Target reached!").font(.headline)
-                Text("\(winners) hit \(target) points. End the game to record the result.")
+                Text("\(winners) hit \(target) points. End the game to record the result, or undo the last score to fix a mistake and keep playing.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -235,6 +277,10 @@ private struct ScoreboardRow: View {
     let total: Int
     /// The game's target score, or nil for an open-ended game.
     let target: Int?
+    /// True when someone has reached the target: scoring is frozen game-wide.
+    let isLocked: Bool
+    /// True when *this* competitor is the one at/over the target.
+    let isOverTarget: Bool
     let onTapMore: () -> Void
 
     private var reachedTarget: Bool {
@@ -260,6 +306,37 @@ private struct ScoreboardRow: View {
                     .monospacedDigit()
             }
 
+            controls
+                .font(.subheadline)
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// The per-row action area. Normally quick-add buttons; once the target is
+    /// reached the whole board is frozen — only the competitor that hit the
+    /// target can have a point removed (to correct a misattributed score).
+    @ViewBuilder
+    private var controls: some View {
+        if isLocked {
+            if isOverTarget {
+                Button(role: .destructive) { undoLastEntry() } label: {
+                    Label(undoLabel, systemImage: "arrow.uturn.backward")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(lastEntry == nil)
+            } else {
+                // No moves allowed for anyone else while the game is at target.
+                HStack(spacing: 8) {
+                    ForEach([1, 2, 3, 5], id: \.self) { amount in
+                        Button("+\(amount)") {}
+                            .buttonStyle(.bordered)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .disabled(true)
+            }
+        } else {
             HStack(spacing: 8) {
                 ForEach([1, 2, 3, 5], id: \.self) { amount in
                     Button("+\(amount)") { add(amount) }
@@ -274,9 +351,7 @@ private struct ScoreboardRow: View {
                 }
                 .buttonStyle(.bordered)
             }
-            .font(.subheadline)
         }
-        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -300,6 +375,22 @@ private struct ScoreboardRow: View {
         let entry = ScoreEntry(points: points)
         entry.participant = participant
         modelContext.insert(entry)
+    }
+
+    /// This competitor's most recent scoring action, if any.
+    private var lastEntry: ScoreEntry? { participant.sortedEntries.first }
+
+    /// Label that names the action being undone, e.g. "Undo last score (+3)".
+    private var undoLabel: String {
+        guard let points = lastEntry?.points else { return "Undo last score" }
+        return "Undo last score (\(points > 0 ? "+\(points)" : "\(points)"))"
+    }
+
+    /// Reverses the competitor's last scoring action by deleting that entry —
+    /// the proper fix for a misattributed point, after which play resumes.
+    private func undoLastEntry() {
+        guard let lastEntry else { return }
+        modelContext.delete(lastEntry)
     }
 }
 

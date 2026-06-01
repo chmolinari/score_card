@@ -18,6 +18,10 @@ struct NewGameView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(LocationManager.self) private var locationManager
 
+    /// Called with the freshly created game just before the flow dismisses, so
+    /// the caller can navigate straight into its scoreboard.
+    var onStart: (Game) -> Void = { _ in }
+
     @Query(sort: \Player.name) private var players: [Player]
     @Query(sort: \Team.name) private var teams: [Team]
 
@@ -295,6 +299,7 @@ struct NewGameView: View {
         }
         game.currentDealerIndex = 0   // position 0 is the first dealer
 
+        onStart(game)
         dismiss()
     }
 }

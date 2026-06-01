@@ -15,6 +15,11 @@ struct GamesView: View {
     @Query(sort: \Game.createdAt, order: .reverse) private var games: [Game]
 
     @State private var isCreatingGame = false
+    /// Set by the New Game flow while its sheet is still up; promoted to
+    /// `openedGame` after the sheet dismisses to avoid a present/push race.
+    @State private var pendingGame: Game?
+    /// Drives navigation straight into a just-created game's scoreboard.
+    @State private var openedGame: Game?
 
     private var openGames: [Game] { games.filter(\.isOpen) }
     private var closedGames: [Game] { games.filter { !$0.isOpen } }
@@ -61,6 +66,9 @@ struct GamesView: View {
                 }
             }
             .navigationTitle("Games")
+            .navigationDestination(item: $openedGame) { game in
+                GameScoreboardView(game: game)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -70,8 +78,16 @@ struct GamesView: View {
                     }
                 }
             }
-            .sheet(isPresented: $isCreatingGame) {
-                NewGameView()
+            .sheet(isPresented: $isCreatingGame, onDismiss: {
+                // Push the new game's scoreboard only once the sheet is fully
+                // gone — setting the destination while the sheet is still up can
+                // drop the push.
+                if let pendingGame {
+                    openedGame = pendingGame
+                    self.pendingGame = nil
+                }
+            }) {
+                NewGameView { game in pendingGame = game }
             }
         }
     }

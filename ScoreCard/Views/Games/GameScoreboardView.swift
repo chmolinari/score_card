@@ -12,6 +12,7 @@ import SwiftData
 struct GameScoreboardView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @Bindable var game: Game
 
@@ -19,7 +20,21 @@ struct GameScoreboardView: View {
     @State private var showCloseConfirmation = false
     @State private var showSeatingSetup = false
 
+    // Total score entries the game had at the start of the current hand. "Next
+    // Hand" stays disabled until at least one point is scored beyond this, then
+    // is reset back to the current total when the hand is advanced — so it's
+    // immediately disabled again until the next score lands.
+    @State private var handBaselineEntryCount = 0
+
     @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
+
+    /// Running count of every competitor's score entries in this game.
+    private var totalEntryCount: Int {
+        (game.participants ?? []).reduce(0) { $0 + ($1.scoreEntries?.count ?? 0) }
+    }
+
+    /// A point must be scored in the current hand before the deal can pass.
+    private var canAdvanceHand: Bool { totalEntryCount > handBaselineEntryCount }
 
     var body: some View {
         // Compute every competitor's total once per render (summing each one's
@@ -83,6 +98,33 @@ struct GameScoreboardView: View {
         } message: {
             Text("The final scores will be saved to your history. You can't add more points after ending.")
         }
+        .onAppear {
+            // Scoring a hand can be a fast flurry of taps. Turn off autosave
+            // while the scoreboard is up so each tap doesn't trigger a CloudKit
+            // save; we persist deliberately when the hand advances or we leave.
+            modelContext.autosaveEnabled = false
+            handBaselineEntryCount = totalEntryCount
+        }
+        .onDisappear {
+            persist()
+            modelContext.autosaveEnabled = true
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Backgrounding doesn't pop the view, so save here too to be safe.
+            if phase != .active { persist() }
+        }
+    }
+
+    private func persist() {
+        try? modelContext.save()
+    }
+
+    /// Pass the deal to the next player, commit the hand's scores, and re-arm
+    /// the baseline so the button disables again until the next point is scored.
+    private func advanceHand() {
+        withAnimation { game.advanceDealer(dealingDirection) }
+        handBaselineEntryCount = totalEntryCount
+        persist()
     }
 
     @ViewBuilder
@@ -102,11 +144,12 @@ struct GameScoreboardView: View {
                     }
                     Spacer()
                     Button {
-                        withAnimation { game.advanceDealer(dealingDirection) }
+                        advanceHand()
                     } label: {
                         Label("Next Hand", systemImage: "arrow.turn.down.right")
                     }
                     .buttonStyle(.bordered)
+                    .disabled(!canAdvanceHand)
                 }
                 if let next = game.nextDealer(dealingDirection) {
                     Text("Next to deal: \(next.name)")
@@ -124,7 +167,11 @@ struct GameScoreboardView: View {
             Text("Current Hand")
         } footer: {
             if game.currentDealer != nil {
-                Text("The deal passes \(dealingDirection.adverb). Tap Next Hand when a new hand begins.")
+                if canAdvanceHand {
+                    Text("The deal passes \(dealingDirection.adverb). Tap Next Hand when this hand is done.")
+                } else {
+                    Text("Score this hand to enable passing the deal.")
+                }
             }
         }
     }
@@ -155,6 +202,7 @@ struct GameScoreboardView: View {
             modelContext.insert(seat)
         }
         game.currentDealerIndex = 0
+        persist()
     }
 
     private func targetReachedBanner(ranked: [(participant: GameParticipant, score: Int)], target: Int) -> some View {

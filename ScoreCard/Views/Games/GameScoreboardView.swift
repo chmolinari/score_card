@@ -55,6 +55,12 @@ struct GameScoreboardView: View {
     /// is to end the game or to reduce an over-target score (to fix a miscount).
     private var isLockedAtTarget: Bool { !winners.isEmpty }
 
+    /// Whether the inline quick-add buttons should be off. Scoring is a once-per
+    /// hand action: as soon as a point lands this hand the buttons close, and
+    /// Next Hand reopens them. They also stay closed once the target is reached.
+    /// Corrections always go through the per-competitor detail sheet (ellipsis).
+    private var scoringDisabled: Bool { canAdvanceHand || isLockedAtTarget }
+
     var body: some View {
         // Fixed table order (first dealer on top) — the rows don't reshuffle by
         // score during play. Each competitor's total is summed once here so the
@@ -78,13 +84,11 @@ struct GameScoreboardView: View {
 
             Section("Scores") {
                 ForEach(Array(scored.enumerated()), id: \.element.participant.persistentModelID) { index, entry in
-                    let overTarget = target.map { entry.score >= $0 } ?? false
                     ScoreboardRow(position: index + 1,
                                   participant: entry.participant,
                                   total: entry.score,
                                   target: target,
-                                  isLocked: isLockedAtTarget,
-                                  isOverTarget: overTarget) {
+                                  scoringDisabled: scoringDisabled) {
                         scoringParticipant = entry.participant
                     }
                 }
@@ -286,10 +290,9 @@ private struct ScoreboardRow: View {
     let total: Int
     /// The game's target score, or nil for an open-ended game.
     let target: Int?
-    /// True when someone has reached the target: scoring is frozen game-wide.
-    let isLocked: Bool
-    /// True when *this* competitor is the one at/over the target.
-    let isOverTarget: Bool
+    /// True when the inline quick-add buttons are closed (a point was already
+    /// scored this hand, or the target's been reached). The ellipsis stays live.
+    let scoringDisabled: Bool
     let onTapMore: () -> Void
 
     private var reachedTarget: Bool {
@@ -321,45 +324,26 @@ private struct ScoreboardRow: View {
         .padding(.vertical, 4)
     }
 
-    /// The per-row action area. Normally quick-add buttons; once the target is
-    /// reached the whole board is frozen — only the competitor that hit the
-    /// target can have a point removed (to correct a misattributed score).
+    /// The per-row action area. The quick-add buttons close after a point is
+    /// scored this hand (reopened by Next Hand) and while the target is reached;
+    /// the ellipsis always stays live so the detail sheet — where scores are
+    /// corrected — remains reachable.
     @ViewBuilder
     private var controls: some View {
-        if isLocked {
-            if isOverTarget {
-                Button(role: .destructive) { undoLastEntry() } label: {
-                    Label(undoLabel, systemImage: "arrow.uturn.backward")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(lastEntry == nil)
-            } else {
-                // No moves allowed for anyone else while the game is at target.
-                HStack(spacing: 8) {
-                    ForEach([1, 2, 3, 5], id: \.self) { amount in
-                        Button("+\(amount)") {}
-                            .buttonStyle(.bordered)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .disabled(true)
+        HStack(spacing: 8) {
+            ForEach([1, 2, 3, 5], id: \.self) { amount in
+                Button("+\(amount)") { add(amount) }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                    .disabled(scoringDisabled)
             }
-        } else {
-            HStack(spacing: 8) {
-                ForEach([1, 2, 3, 5], id: \.self) { amount in
-                    Button("+\(amount)") { add(amount) }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-                }
-                Button {
-                    onTapMore()
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
+            Button {
+                onTapMore()
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -374,22 +358,6 @@ private struct ScoreboardRow: View {
         let entry = ScoreEntry(points: points)
         entry.participant = participant
         modelContext.insert(entry)
-    }
-
-    /// This competitor's most recent scoring action, if any.
-    private var lastEntry: ScoreEntry? { participant.sortedEntries.first }
-
-    /// Label that names the action being undone, e.g. "Undo last score (+3)".
-    private var undoLabel: String {
-        guard let points = lastEntry?.points else { return "Undo last score" }
-        return "Undo last score (\(points > 0 ? "+\(points)" : "\(points)"))"
-    }
-
-    /// Reverses the competitor's last scoring action by deleting that entry —
-    /// the proper fix for a misattributed point, after which play resumes.
-    private func undoLastEntry() {
-        guard let lastEntry else { return }
-        modelContext.delete(lastEntry)
     }
 }
 

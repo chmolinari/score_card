@@ -22,23 +22,29 @@ struct GameScoreboardView: View {
     @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
 
     var body: some View {
-        List {
+        // Compute every competitor's total once per render (summing each one's
+        // score entries is O(entries)); the banner and the rows below all reuse
+        // these instead of re-summing and re-sorting on each access.
+        let ranked = game.rankedScores
+        let target = game.hasTarget ? game.targetPoints : nil
+
+        return List {
             Section {
                 GameInfoHeader(game: game)
             }
 
-            if !game.winnersAtTarget.isEmpty {
+            if let target, ranked.contains(where: { $0.score >= target }) {
                 Section {
-                    targetReachedBanner
+                    targetReachedBanner(ranked: ranked, target: target)
                 }
             }
 
             dealerSection
 
             Section("Scores") {
-                ForEach(Array(game.rankedParticipants.enumerated()), id: \.element.persistentModelID) { index, participant in
-                    ScoreboardRow(rank: index + 1, participant: participant, game: game) {
-                        scoringParticipant = participant
+                ForEach(Array(ranked.enumerated()), id: \.element.participant.persistentModelID) { index, entry in
+                    ScoreboardRow(rank: index + 1, participant: entry.participant, total: entry.score, target: target) {
+                        scoringParticipant = entry.participant
                     }
                 }
             }
@@ -151,12 +157,12 @@ struct GameScoreboardView: View {
         game.currentDealerIndex = 0
     }
 
-    private var targetReachedBanner: some View {
-        let winners = game.winnersAtTarget.map(\.displayName).joined(separator: ", ")
+    private func targetReachedBanner(ranked: [(participant: GameParticipant, score: Int)], target: Int) -> some View {
+        let winners = ranked.filter { $0.score >= target }.map(\.participant.displayName).joined(separator: ", ")
         return Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Target reached!").font(.headline)
-                Text("\(winners) hit \(game.targetPoints ?? 0) points. End the game to record the result.")
+                Text("\(winners) hit \(target) points. End the game to record the result.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -177,12 +183,15 @@ private struct ScoreboardRow: View {
     @Environment(\.modelContext) private var modelContext
     let rank: Int
     let participant: GameParticipant
-    let game: Game
+    /// Precomputed by the parent so the row doesn't re-sum the score entries.
+    let total: Int
+    /// The game's target score, or nil for an open-ended game.
+    let target: Int?
     let onTapMore: () -> Void
 
     private var reachedTarget: Bool {
-        guard game.hasTarget, let target = game.targetPoints else { return false }
-        return participant.totalScore >= target
+        guard let target else { return false }
+        return total >= target
     }
 
     var body: some View {
@@ -197,7 +206,7 @@ private struct ScoreboardRow: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("\(participant.totalScore)")
+                Text("\(total)")
                     .font(.system(.title, design: .rounded).weight(.bold))
                     .foregroundStyle(reachedTarget ? .green : .primary)
                     .monospacedDigit()

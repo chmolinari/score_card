@@ -19,17 +19,36 @@ struct PlayerEditView: View {
     /// Lets callers (e.g. New Game) react to a player created on the fly.
     var onCreate: ((Player) -> Void)? = nil
 
+    @Query private var allPlayers: [Player]
+
     @State private var name: String = ""
 
     private var isEditing: Bool { player != nil }
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// A non-nil message when the typed name collides with another player's
+    /// (case-insensitive). Player names must be unique.
+    private var nameError: String? {
+        guard !trimmedName.isEmpty else { return nil }
+        let clashes = allPlayers.contains { other in
+            other.persistentModelID != player?.persistentModelID
+                && other.name.localizedCaseInsensitiveCompare(trimmedName) == .orderedSame
+        }
+        return clashes ? "A player named “\(trimmedName)” already exists." : nil
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Name") {
+                Section {
                     TextField("Player name", text: $name)
                         .textInputAutocapitalization(.words)
+                } header: {
+                    Text("Name")
+                } footer: {
+                    if let nameError {
+                        Text(nameError).foregroundStyle(.red)
+                    }
                 }
             }
             .navigationTitle(isEditing ? "Edit Player" : "New Player")
@@ -40,7 +59,7 @@ struct PlayerEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
-                        .disabled(trimmedName.isEmpty)
+                        .disabled(trimmedName.isEmpty || nameError != nil)
                 }
             }
             .onAppear { name = player?.name ?? "" }
@@ -48,6 +67,7 @@ struct PlayerEditView: View {
     }
 
     private func save() {
+        guard !trimmedName.isEmpty, nameError == nil else { return }
         if let player {
             player.name = trimmedName
         } else {

@@ -19,6 +19,7 @@ struct TeamEditView: View {
     var onCreate: ((Team) -> Void)? = nil
 
     @Query(sort: \Player.name) private var allPlayers: [Player]
+    @Query private var allTeams: [Team]
 
     @State private var name: String = ""
     @State private var selectedPlayerIDs: Set<PersistentIdentifier> = []
@@ -27,12 +28,29 @@ struct TeamEditView: View {
     private var isEditing: Bool { team != nil }
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// A non-nil message when the typed name collides with another team's
+    /// (case-insensitive). Team names must be unique.
+    private var nameError: String? {
+        guard !trimmedName.isEmpty else { return nil }
+        let clashes = allTeams.contains { other in
+            other.persistentModelID != team?.persistentModelID
+                && other.name.localizedCaseInsensitiveCompare(trimmedName) == .orderedSame
+        }
+        return clashes ? "A team named “\(trimmedName)” already exists." : nil
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Name") {
+                Section {
                     TextField("Team name", text: $name)
                         .textInputAutocapitalization(.words)
+                } header: {
+                    Text("Name")
+                } footer: {
+                    if let nameError {
+                        Text(nameError).foregroundStyle(.red)
+                    }
                 }
 
                 Section {
@@ -77,7 +95,7 @@ struct TeamEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
-                        .disabled(trimmedName.isEmpty || selectedPlayerIDs.isEmpty)
+                        .disabled(trimmedName.isEmpty || selectedPlayerIDs.isEmpty || nameError != nil)
                 }
             }
             .sheet(isPresented: $isCreatingPlayer) {
@@ -103,6 +121,7 @@ struct TeamEditView: View {
     }
 
     private func save() {
+        guard !trimmedName.isEmpty, !selectedPlayerIDs.isEmpty, nameError == nil else { return }
         let members = allPlayers.filter { selectedPlayerIDs.contains($0.persistentModelID) }
         if let team {
             team.name = trimmedName

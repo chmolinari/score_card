@@ -53,21 +53,32 @@ final class Game {
     /// A game is "open" (still being scored) until it is explicitly closed.
     var isOpen: Bool { closedAt == nil }
 
+    /// Participants paired with their total score, ranked highest-first.
+    ///
+    /// Each participant's total is summed from its score entries exactly once
+    /// here, so callers that need both the ranking and the scores (the live
+    /// scoreboard) don't re-walk every entry multiple times per render.
+    var rankedScores: [(participant: GameParticipant, score: Int)] {
+        (participants ?? [])
+            .map { (participant: $0, score: $0.totalScore) }
+            .sorted { a, b in
+                if a.score != b.score { return a.score > b.score }
+                return a.participant.sortIndex < b.participant.sortIndex
+            }
+    }
+
     /// Participants unwrapped, ranked by score (highest first) for the scoreboard.
     var rankedParticipants: [GameParticipant] {
-        (participants ?? []).sorted { a, b in
-            if a.totalScore != b.totalScore { return a.totalScore > b.totalScore }
-            return a.sortIndex < b.sortIndex
-        }
+        rankedScores.map(\.participant)
     }
 
     /// The participant currently in the lead, if the game has any.
-    var leader: GameParticipant? { rankedParticipants.first }
+    var leader: GameParticipant? { rankedScores.first?.participant }
 
     /// The participant(s) that have reached the target, if one is set.
     var winnersAtTarget: [GameParticipant] {
         guard hasTarget, let target = targetPoints else { return [] }
-        return rankedParticipants.filter { $0.totalScore >= target }
+        return rankedScores.filter { $0.score >= target }.map(\.participant)
     }
 
     /// Seats ordered counter-clockwise from the first dealer (position 0).

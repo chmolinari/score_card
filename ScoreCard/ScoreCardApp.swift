@@ -49,10 +49,16 @@ struct ScoreCardApp: App {
             }
         }
 
+        // Diagnostic: "-noCloudKit" runs against the same on-disk store but with
+        // sync disabled, to isolate whether CloudKit mirroring is the cause of
+        // on-device slowness. Harmless to ship; only active when the flag is set.
+        let cloudKitDatabase: ModelConfiguration.CloudKitDatabase =
+            ProcessInfo.processInfo.arguments.contains("-noCloudKit") ? .none : .automatic
+
         let cloudConfiguration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,
-            cloudKitDatabase: .automatic
+            cloudKitDatabase: cloudKitDatabase
         )
 
         let container: ModelContainer

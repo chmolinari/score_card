@@ -44,6 +44,8 @@ struct BackupSnapshot: Codable {
         // Optional so backups written before seating was added still decode.
         var seats: [SeatDTO]?
         var currentDealerIndex: Int?
+        // Optional so backups written before the hand counter still decode.
+        var currentHand: Int?
     }
 
     struct SeatDTO: Codable {

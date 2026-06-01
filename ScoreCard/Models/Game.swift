@@ -43,6 +43,10 @@ final class Game {
     // Which seat is dealing the current hand (manche). Index into `orderedSeats`.
     var currentDealerIndex: Int = 0
 
+    // Which hand (manche) is being played, starting at 1 for the opening hand and
+    // incremented each time the deal passes to the next player.
+    var currentHand: Int = 1
+
     init(title: String, hasTarget: Bool = false, targetPoints: Int? = nil) {
         self.title = title
         self.hasTarget = hasTarget

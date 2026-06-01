@@ -110,7 +110,8 @@ enum BackupService {
                          locationName: game.locationName,
                          participants: participants,
                          seats: seats,
-                         currentDealerIndex: game.currentDealerIndex)
+                         currentDealerIndex: game.currentDealerIndex,
+                         currentHand: game.currentHand)
         }
         return snapshot
     }
@@ -181,6 +182,7 @@ enum BackupService {
                 context.insert(seat)
             }
             game.currentDealerIndex = dto.currentDealerIndex ?? 0
+            game.currentHand = dto.currentHand ?? 1
         }
 
         try context.save()

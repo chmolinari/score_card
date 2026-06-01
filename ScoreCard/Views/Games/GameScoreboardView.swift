@@ -165,7 +165,10 @@ struct GameScoreboardView: View {
     /// Pass the deal to the next player, commit the hand's scores, and re-arm
     /// the baseline so the button disables again until the next point is scored.
     private func advanceHand() {
-        withAnimation { game.advanceDealer(dealingDirection) }
+        withAnimation {
+            game.advanceDealer(dealingDirection)
+            game.currentHand += 1
+        }
         handBaselineEntryCount = totalEntryCount
         persist()
     }
@@ -194,6 +197,9 @@ struct GameScoreboardView: View {
                     .buttonStyle(.bordered)
                     .disabled(!canAdvanceHand || isLockedAtTarget)
                 }
+                Label("Hand \(game.currentHand)", systemImage: "rectangle.stack")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 if let next = game.nextDealer(dealingDirection) {
                     Text("Next to deal: \(next.name)")
                         .font(.caption)
@@ -245,6 +251,7 @@ struct GameScoreboardView: View {
             modelContext.insert(seat)
         }
         game.currentDealerIndex = 0
+        game.currentHand = 1
         persist()
     }
 

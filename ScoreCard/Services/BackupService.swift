@@ -96,6 +96,10 @@ enum BackupService {
                             .map { .init(points: $0.points, timestamp: $0.timestamp) }
                     )
                 }
+            let seats = game.orderedSeats.map { seat in
+                BackupSnapshot.SeatDTO(position: seat.position,
+                                       playerIndex: seat.player.flatMap { playerIndex[$0.persistentModelID] })
+            }
             return .init(title: game.title,
                          hasTarget: game.hasTarget,
                          targetPoints: game.targetPoints,
@@ -104,7 +108,9 @@ enum BackupService {
                          latitude: game.latitude,
                          longitude: game.longitude,
                          locationName: game.locationName,
-                         participants: participants)
+                         participants: participants,
+                         seats: seats,
+                         currentDealerIndex: game.currentDealerIndex)
         }
         return snapshot
     }
@@ -167,6 +173,14 @@ enum BackupService {
                     context.insert(entry)
                 }
             }
+
+            for sdto in dto.seats ?? [] {
+                let seat = Seat(position: sdto.position)
+                if let i = sdto.playerIndex { seat.player = players[safe: i] }
+                seat.game = game
+                context.insert(seat)
+            }
+            game.currentDealerIndex = dto.currentDealerIndex ?? 0
         }
 
         try context.save()

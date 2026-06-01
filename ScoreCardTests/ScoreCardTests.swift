@@ -384,6 +384,82 @@ struct ScoreCardTests {
         }
     }
 
+    // MARK: Dealer / seating
+
+    @Test func dealerRotatesCounterClockwiseAndWraps() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        var players: [Player] = []
+        for name in ["A", "B", "C", "D"] {
+            let player = Player(name: name); context.insert(player); players.append(player)
+        }
+        let game = Game(title: "Briscola"); context.insert(game)
+        for (position, player) in players.enumerated() {
+            let seat = Seat(player: player, position: position); seat.game = game; context.insert(seat)
+        }
+        game.currentDealerIndex = 0
+        try context.save()
+
+        #expect(game.currentDealer?.name == "A")
+        #expect(game.nextDealer?.name == "B")
+        game.advanceDealer()
+        #expect(game.currentDealer?.name == "B")
+        game.advanceDealer(); game.advanceDealer()
+        #expect(game.currentDealer?.name == "D")
+        game.advanceDealer()                       // wraps around the table
+        #expect(game.currentDealer?.name == "A")
+    }
+
+    @Test func gameWithoutSeatingHasNoDealer() throws {
+        let game = Game(title: "Scopa")
+        #expect(game.hasSeating == false)
+        #expect(game.currentDealer == nil)
+    }
+
+    @Test func draftExpandsTeamsToPeopleAndDedupes() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        let carol = Player(name: "Carol")
+        [alice, bob, carol].forEach(context.insert)
+        let team = Team(name: "Aces", members: [alice, bob])
+        context.insert(team)
+        try context.save()
+
+        // Team + a solo entry for Alice (already on the team) + solo Carol.
+        let draft = GameDraft(title: "G", hasTarget: false, targetPoints: nil,
+                              competitors: [.team(team), .player(alice), .player(carol)])
+        #expect(draft.people.map(\.name) == ["Alice", "Bob", "Carol"])
+    }
+
+    @Test func backupPreservesSeatsAndDealer() throws {
+        let sourceContainer = try makeContainer()
+        let source = sourceContainer.mainContext
+        var players: [Player] = []
+        for name in ["A", "B", "C"] {
+            let player = Player(name: name); source.insert(player); players.append(player)
+        }
+        let game = Game(title: "Tressette"); source.insert(game)
+        let participant = GameParticipant(player: players[0], sortIndex: 0)
+        participant.game = game; source.insert(participant)
+        for (position, player) in players.enumerated() {
+            let seat = Seat(player: player, position: position); seat.game = game; source.insert(seat)
+        }
+        game.currentDealerIndex = 1
+        try source.save()
+
+        let data = try BackupService.exportData(from: source)
+        let destContainer = try makeContainer()
+        let dest = destContainer.mainContext
+        try BackupService.restore(BackupService.decodeSnapshot(data), into: dest)
+
+        let restored = try #require(try dest.fetch(FetchDescriptor<Game>()).first)
+        #expect(restored.orderedSeats.map { $0.player?.name } == ["A", "B", "C"])
+        #expect(restored.currentDealerIndex == 1)
+        #expect(restored.currentDealer?.name == "B")
+    }
+
     @Test func historySurvivesPlayerDeletion() throws {
         let container = try makeContainer()
         let context = container.mainContext

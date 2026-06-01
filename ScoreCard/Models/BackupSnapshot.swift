@@ -41,6 +41,15 @@ struct BackupSnapshot: Codable {
         var longitude: Double?
         var locationName: String?
         var participants: [ParticipantDTO]
+        // Optional so backups written before seating was added still decode.
+        var seats: [SeatDTO]?
+        var currentDealerIndex: Int?
+    }
+
+    struct SeatDTO: Codable {
+        var position: Int
+        /// Index into `players`, or nil if the seated player was deleted.
+        var playerIndex: Int?
     }
 
     struct ParticipantDTO: Codable {

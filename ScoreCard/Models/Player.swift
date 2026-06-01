@@ -24,6 +24,10 @@ final class Player {
     @Relationship(inverse: \GameParticipant.player)
     var participations: [GameParticipant]? = []
 
+    // Table seats this player occupies across games (inverse of Seat.player).
+    @Relationship(inverse: \Seat.player)
+    var seatings: [Seat]? = []
+
     init(name: String) {
         self.name = name
         self.createdAt = .now

@@ -50,6 +50,12 @@ enum SampleData {
         context.insert(scopaB)
         addEntry(7, to: scopaA, in: context)
         addEntry(4, to: scopaB, in: context)
+        for (position, player) in [alice, bob, carol, dave].enumerated() {
+            let seat = Seat(player: player, position: position)
+            seat.game = scopa
+            context.insert(seat)
+        }
+        scopa.currentDealerIndex = 0
 
         // A finished, open-ended game (e.g. Briscola).
         let briscola = Game(title: "Briscola", hasTarget: false)

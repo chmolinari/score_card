@@ -35,6 +35,14 @@ final class Game {
     @Relationship(deleteRule: .cascade, inverse: \GameParticipant.game)
     var participants: [GameParticipant]? = []
 
+    // Seating around the table, ordered counter-clockwise from the first dealer.
+    // Holds individual people even when the competitors are teams.
+    @Relationship(deleteRule: .cascade, inverse: \Seat.game)
+    var seats: [Seat]? = []
+
+    // Which seat is dealing the current hand (manche). Index into `orderedSeats`.
+    var currentDealerIndex: Int = 0
+
     init(title: String, hasTarget: Bool = false, targetPoints: Int? = nil) {
         self.title = title
         self.hasTarget = hasTarget
@@ -60,6 +68,39 @@ final class Game {
     var winnersAtTarget: [GameParticipant] {
         guard hasTarget, let target = targetPoints else { return [] }
         return rankedParticipants.filter { $0.totalScore >= target }
+    }
+
+    /// Seats ordered counter-clockwise from the first dealer (position 0).
+    var orderedSeats: [Seat] {
+        (seats ?? []).sorted { $0.position < $1.position }
+    }
+
+    /// Whether a seating order / dealer has been set for this game.
+    var hasSeating: Bool { !(seats ?? []).isEmpty }
+
+    /// The player dealing the current hand, if seating is set.
+    var currentDealer: Player? {
+        let seats = orderedSeats
+        guard !seats.isEmpty else { return nil }
+        let count = seats.count
+        let index = ((currentDealerIndex % count) + count) % count
+        return seats[index].player
+    }
+
+    /// The player who deals the next hand (the next seat counter-clockwise).
+    var nextDealer: Player? {
+        let seats = orderedSeats
+        guard !seats.isEmpty else { return nil }
+        let count = seats.count
+        let index = ((currentDealerIndex + 1) % count + count) % count
+        return seats[index].player
+    }
+
+    /// Move the deal to the next player counter-clockwise (start of a new hand).
+    func advanceDealer() {
+        let count = orderedSeats.count
+        guard count > 0 else { return }
+        currentDealerIndex = (currentDealerIndex + 1) % count
     }
 
     /// CoreLocation coordinate reconstructed from the stored components.

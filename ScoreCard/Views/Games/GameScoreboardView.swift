@@ -17,6 +17,7 @@ struct GameScoreboardView: View {
 
     @State private var scoringParticipant: GameParticipant?
     @State private var showCloseConfirmation = false
+    @State private var showSeatingSetup = false
 
     var body: some View {
         List {
@@ -29,6 +30,8 @@ struct GameScoreboardView: View {
                     targetReachedBanner
                 }
             }
+
+            dealerSection
 
             Section("Scores") {
                 ForEach(Array(game.rankedParticipants.enumerated()), id: \.element.persistentModelID) { index, participant in
@@ -51,6 +54,19 @@ struct GameScoreboardView: View {
             ParticipantScoringSheet(participant: participant)
                 .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showSeatingSetup) {
+            NavigationStack {
+                SeatingArrangementView(people: peopleForSeating, confirmTitle: "Save") { ordered in
+                    applySeating(ordered)
+                    showSeatingSetup = false
+                }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showSeatingSetup = false }
+                    }
+                }
+            }
+        }
         .confirmationDialog("End this game?",
                             isPresented: $showCloseConfirmation,
                             titleVisibility: .visible) {
@@ -59,6 +75,78 @@ struct GameScoreboardView: View {
         } message: {
             Text("The final scores will be saved to your history. You can't add more points after ending.")
         }
+    }
+
+    @ViewBuilder
+    private var dealerSection: some View {
+        Section {
+            if let dealer = game.currentDealer {
+                HStack(spacing: 12) {
+                    Image(systemName: "hand.draw.fill")
+                        .font(.title3)
+                        .foregroundStyle(.tint)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Dealer this hand")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(dealer.name)
+                            .font(.headline)
+                    }
+                    Spacer()
+                    Button {
+                        withAnimation { game.advanceDealer() }
+                    } label: {
+                        Label("Next Hand", systemImage: "arrow.turn.down.right")
+                    }
+                    .buttonStyle(.bordered)
+                }
+                if let next = game.nextDealer {
+                    Text("Next to deal: \(next.name)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Button {
+                    showSeatingSetup = true
+                } label: {
+                    Label("Set Up Seating & Dealer", systemImage: "person.3.sequence.fill")
+                }
+            }
+        } header: {
+            Text("Current Hand")
+        } footer: {
+            if game.currentDealer != nil {
+                Text("The deal passes counter-clockwise. Tap Next Hand when a new hand begins.")
+            }
+        }
+    }
+
+    /// Individual people at the table, derived from the competitors (teams
+    /// expanded to members), for setting up seating on an existing game.
+    private var peopleForSeating: [Player] {
+        var seen = Set<PersistentIdentifier>()
+        var result: [Player] = []
+        func add(_ player: Player) {
+            if seen.insert(player.persistentModelID).inserted { result.append(player) }
+        }
+        for participant in game.participants ?? [] {
+            if let player = participant.player {
+                add(player)
+            } else if let team = participant.team {
+                team.sortedMembers.forEach(add)
+            }
+        }
+        return result
+    }
+
+    private func applySeating(_ ordered: [Player]) {
+        for seat in game.seats ?? [] { modelContext.delete(seat) }
+        for (position, player) in ordered.enumerated() {
+            let seat = Seat(player: player, position: position)
+            seat.game = game
+            modelContext.insert(seat)
+        }
+        game.currentDealerIndex = 0
     }
 
     private var targetReachedBanner: some View {

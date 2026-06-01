@@ -74,6 +74,19 @@ enum SampleDataSeeder {
                 index += 1
             }
 
+            // Seat the individual people (team members expanded) and give the
+            // game a starting dealer so the dealer feature has data to show.
+            var people: [Player] = playerScores.map(\.0)
+            people += teamScores.flatMap { $0.0.sortedMembers }
+            for (position, player) in people.enumerated() {
+                let seat = Seat(player: player, position: position)
+                seat.game = game
+                context.insert(seat)
+            }
+            if !people.isEmpty {
+                game.currentDealerIndex = Int.random(in: 0..<people.count)
+            }
+
             if closed {
                 game.closedAt = created.addingTimeInterval(Double.random(in: 20...75) * 60)
             }

@@ -29,14 +29,15 @@ struct NewGameView: View {
     /// preserves that order. Stored as model objects (not persistent IDs)
     /// because a freshly created object's ID changes when SwiftData autosaves —
     /// holding the object keeps the selection stable across that change.
-    @State private var selectedCompetitors: [Competitor] = []
+    @State private var selectedCompetitors: [GameCompetitor] = []
 
     @State private var isAddingPlayer = false
     @State private var isAddingTeam = false
-    @State private var isSaving = false
+    /// Set when the user taps Next; drives navigation to the seating step.
+    @State private var draft: GameDraft?
 
     private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var canSave: Bool { !trimmedTitle.isEmpty && selectedCompetitors.count >= 2 && !isSaving }
+    private var canProceed: Bool { !trimmedTitle.isEmpty && selectedCompetitors.count >= 2 }
 
     var body: some View {
         NavigationStack {
@@ -85,8 +86,18 @@ struct NewGameView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Start") { Task { await start() } }
-                        .disabled(!canSave)
+                    Button("Next") {
+                        draft = GameDraft(title: trimmedTitle,
+                                          hasTarget: hasTarget,
+                                          targetPoints: hasTarget ? targetPoints : nil,
+                                          competitors: selectedCompetitors)
+                    }
+                    .disabled(!canProceed)
+                }
+            }
+            .navigationDestination(item: $draft) { draft in
+                SeatingArrangementView(people: draft.people, confirmTitle: "Start Game") { seating in
+                    await startGame(draft: draft, seating: seating)
                 }
             }
             .sheet(isPresented: $isAddingPlayer) {
@@ -190,7 +201,7 @@ struct NewGameView: View {
         !frequentTeams.isEmpty && !otherTeams.isEmpty
     }
 
-    private func selectableRow(for competitor: Competitor, subtitle: String? = nil, systemImage: String) -> some View {
+    private func selectableRow(for competitor: GameCompetitor, subtitle: String? = nil, systemImage: String) -> some View {
         Button {
             toggle(competitor)
         } label: {
@@ -232,11 +243,11 @@ struct NewGameView: View {
 
     // MARK: - Selection
 
-    private func isSelected(_ competitor: Competitor) -> Bool {
+    private func isSelected(_ competitor: GameCompetitor) -> Bool {
         selectedCompetitors.contains(competitor)
     }
 
-    private func toggle(_ competitor: Competitor) {
+    private func toggle(_ competitor: GameCompetitor) {
         if let index = selectedCompetitors.firstIndex(of: competitor) {
             selectedCompetitors.remove(at: index)
         } else {
@@ -245,26 +256,25 @@ struct NewGameView: View {
     }
 
     /// Add a competitor if it isn't already chosen (used for inline creation).
-    private func select(_ competitor: Competitor) {
+    private func select(_ competitor: GameCompetitor) {
         if !isSelected(competitor) {
             selectedCompetitors.append(competitor)
         }
     }
 
-    private func start() async {
-        isSaving = true
-        defer { isSaving = false }
-
+    /// Create the game, its participants, and the seating decided on the previous
+    /// step, then dismiss the whole New Game flow.
+    private func startGame(draft: GameDraft, seating: [Player]) async {
         // Best-effort location capture before persisting.
         let location = await locationManager.captureCurrentLocation()
 
-        let game = Game(title: trimmedTitle,
-                        hasTarget: hasTarget,
-                        targetPoints: hasTarget ? targetPoints : nil)
+        let game = Game(title: draft.title,
+                        hasTarget: draft.hasTarget,
+                        targetPoints: draft.targetPoints)
         game.apply(location: location)
         modelContext.insert(game)
 
-        for (index, competitor) in selectedCompetitors.enumerated() {
+        for (index, competitor) in draft.competitors.enumerated() {
             let participant: GameParticipant
             switch competitor {
             case .player(let player):
@@ -276,38 +286,14 @@ struct NewGameView: View {
             modelContext.insert(participant)
         }
 
+        for (position, player) in seating.enumerated() {
+            let seat = Seat(player: player, position: position)
+            seat.game = game
+            modelContext.insert(seat)
+        }
+        game.currentDealerIndex = 0   // position 0 is the first dealer
+
         dismiss()
-    }
-}
-
-/// A competitor chosen for a new game: either a single player or a team.
-/// Wraps the model object directly so the selection survives the object's
-/// persistent-ID changing on first save.
-private enum Competitor: Identifiable, Equatable {
-    case player(Player)
-    case team(Team)
-
-    var id: PersistentIdentifier {
-        switch self {
-        case .player(let player): return player.persistentModelID
-        case .team(let team): return team.persistentModelID
-        }
-    }
-
-    var name: String {
-        switch self {
-        case .player(let player): return player.name
-        case .team(let team): return team.name
-        }
-    }
-
-    // Identity comparison: two cases are equal only if they wrap the same object.
-    static func == (lhs: Competitor, rhs: Competitor) -> Bool {
-        switch (lhs, rhs) {
-        case let (.player(a), .player(b)): return a === b
-        case let (.team(a), .team(b)): return a === b
-        default: return false
-        }
     }
 }
 

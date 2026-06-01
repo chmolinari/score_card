@@ -51,11 +51,16 @@ final class ScoreCardUITests: XCTestCase {
         nameField.tap()
         nameField.typeText("Friendly Match")
 
-        // Start it; it should appear in the games list.
-        let start = app.buttons["Start"]
-        XCTAssertTrue(start.waitForExistence(timeout: 5))
-        XCTAssertTrue(start.isEnabled, "Start should be enabled with a name and 2 competitors")
-        start.tap()
+        // Proceed to the seating/dealer step.
+        let next = app.buttons["Next"]
+        XCTAssertTrue(next.waitForExistence(timeout: 5))
+        XCTAssertTrue(next.isEnabled, "Next should be enabled with a name and 2 competitors")
+        next.tap()
+
+        // The seating step picks a random first dealer; start the game from here.
+        let startGame = app.buttons["Start Game"]
+        XCTAssertTrue(startGame.waitForExistence(timeout: 5), "Seating step should appear")
+        startGame.tap()
 
         XCTAssertTrue(app.staticTexts["Friendly Match"].waitForExistence(timeout: 10),
                       "The newly started game should show in the list")

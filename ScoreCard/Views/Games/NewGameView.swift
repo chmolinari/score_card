@@ -1,0 +1,318 @@
+//
+//  NewGameView.swift
+//  ScoreCard
+//
+//  Sheet for starting a new game: name it, optionally set a target score, and
+//  choose the competitors (any mix of individual players and teams). Players and
+//  teams can be created inline here without leaving the screen, and are
+//  auto-selected once created. On save the current date/time and (best-effort)
+//  geolocation are stamped onto the game.
+//
+
+import SwiftUI
+import SwiftData
+import CoreLocation
+
+struct NewGameView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @Environment(LocationManager.self) private var locationManager
+
+    @Query(sort: \Player.name) private var players: [Player]
+    @Query(sort: \Team.name) private var teams: [Team]
+
+    @State private var title: String = ""
+    @State private var hasTarget = false
+    @State private var targetPoints = 11
+
+    /// Selected competitors, in the order they were added, so the scoreboard
+    /// preserves that order. Stored as model objects (not persistent IDs)
+    /// because a freshly created object's ID changes when SwiftData autosaves —
+    /// holding the object keeps the selection stable across that change.
+    @State private var selectedCompetitors: [Competitor] = []
+
+    @State private var isAddingPlayer = false
+    @State private var isAddingTeam = false
+    @State private var isSaving = false
+
+    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var canSave: Bool { !trimmedTitle.isEmpty && selectedCompetitors.count >= 2 && !isSaving }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Game") {
+                    TextField("Game name (e.g. Scopa, Briscola)", text: $title)
+                        .textInputAutocapitalization(.words)
+                }
+
+                Section {
+                    Toggle("Play to a target score", isOn: $hasTarget.animation())
+                    if hasTarget {
+                        Stepper(value: $targetPoints, in: 1...1000) {
+                            HStack {
+                                Text("Target")
+                                Spacer()
+                                Text("\(targetPoints)").foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } footer: {
+                    Text(hasTarget
+                         ? "The first to reach \(targetPoints) points wins (e.g. Scopa)."
+                         : "Open-ended: just track running totals (e.g. Briscola).")
+                }
+
+                playersSection
+                teamsSection
+
+                if !selectedCompetitors.isEmpty {
+                    Section("Playing") {
+                        ForEach(Array(selectedCompetitors.enumerated()), id: \.offset) { index, competitor in
+                            Label("\(index + 1). \(competitor.name)", systemImage: "number.circle")
+                        }
+                    }
+                }
+
+                Section {
+                    locationStatusRow
+                }
+            }
+            .navigationTitle("New Game")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Start") { Task { await start() } }
+                        .disabled(!canSave)
+                }
+            }
+            .sheet(isPresented: $isAddingPlayer) {
+                PlayerEditView(player: nil) { newPlayer in
+                    select(.player(newPlayer))
+                }
+            }
+            .sheet(isPresented: $isAddingTeam) {
+                TeamEditView(team: nil) { newTeam in
+                    select(.team(newTeam))
+                }
+            }
+            .onAppear { locationManager.requestAuthorizationIfNeeded() }
+        }
+    }
+
+    @ViewBuilder
+    private var playersSection: some View {
+        if showsMostUsedPlayers {
+            Section("Most Used Players") {
+                ForEach(frequentPlayers) { player in
+                    selectableRow(for: .player(player), systemImage: "person.circle.fill")
+                }
+            }
+            Section("All Players") {
+                ForEach(otherPlayers) { player in
+                    selectableRow(for: .player(player), systemImage: "person.circle.fill")
+                }
+                newPlayerButton
+            }
+        } else {
+            Section("Players") {
+                ForEach(players) { player in
+                    selectableRow(for: .player(player), systemImage: "person.circle.fill")
+                }
+                newPlayerButton
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var teamsSection: some View {
+        if showsMostUsedTeams {
+            Section("Most Used Teams") {
+                ForEach(frequentTeams) { team in
+                    selectableRow(for: .team(team), subtitle: team.rosterSummary, systemImage: "person.2.circle.fill")
+                }
+            }
+            Section("All Teams") {
+                ForEach(otherTeams) { team in
+                    selectableRow(for: .team(team), subtitle: team.rosterSummary, systemImage: "person.2.circle.fill")
+                }
+                newTeamButton
+            }
+        } else {
+            Section("Teams") {
+                ForEach(teams) { team in
+                    selectableRow(for: .team(team), subtitle: team.rosterSummary, systemImage: "person.2.circle.fill")
+                }
+                newTeamButton
+            }
+        }
+    }
+
+    private var newPlayerButton: some View {
+        Button { isAddingPlayer = true } label: { Label("New Player", systemImage: "plus") }
+    }
+
+    private var newTeamButton: some View {
+        Button { isAddingTeam = true } label: { Label("New Team", systemImage: "plus") }
+    }
+
+    // MARK: - Most-used ranking
+
+    /// Top players by number of games played; shown above the full list.
+    private var frequentPlayers: [Player] {
+        FrequentPicker.top(players, usage: { $0.usageCount }, name: { $0.name })
+    }
+
+    /// Players not in the "most used" set, kept in the @Query's alphabetical order.
+    private var otherPlayers: [Player] {
+        let ids = Set(frequentPlayers.map(\.persistentModelID))
+        return players.filter { !ids.contains($0.persistentModelID) }
+    }
+
+    /// Only split into Most Used + All when it actually helps (there are extras).
+    private var showsMostUsedPlayers: Bool {
+        !frequentPlayers.isEmpty && !otherPlayers.isEmpty
+    }
+
+    private var frequentTeams: [Team] {
+        FrequentPicker.top(teams, usage: { $0.usageCount }, name: { $0.name })
+    }
+
+    private var otherTeams: [Team] {
+        let ids = Set(frequentTeams.map(\.persistentModelID))
+        return teams.filter { !ids.contains($0.persistentModelID) }
+    }
+
+    private var showsMostUsedTeams: Bool {
+        !frequentTeams.isEmpty && !otherTeams.isEmpty
+    }
+
+    private func selectableRow(for competitor: Competitor, subtitle: String? = nil, systemImage: String) -> some View {
+        Button {
+            toggle(competitor)
+        } label: {
+            HStack {
+                Image(systemName: systemImage).foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(competitor.name).foregroundStyle(.primary)
+                    if let subtitle {
+                        Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if isSelected(competitor) {
+                    Image(systemName: "checkmark").foregroundStyle(.tint)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var locationStatusRow: some View {
+        switch locationManager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            Label("Location will be tagged when the game starts.", systemImage: "mappin.and.ellipse")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .denied, .restricted:
+            Label("Location access is off, so this game won't be geo-tagged. Enable it in Settings.", systemImage: "location.slash")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        default:
+            Label("Location permission will be requested.", systemImage: "location")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Selection
+
+    private func isSelected(_ competitor: Competitor) -> Bool {
+        selectedCompetitors.contains(competitor)
+    }
+
+    private func toggle(_ competitor: Competitor) {
+        if let index = selectedCompetitors.firstIndex(of: competitor) {
+            selectedCompetitors.remove(at: index)
+        } else {
+            selectedCompetitors.append(competitor)
+        }
+    }
+
+    /// Add a competitor if it isn't already chosen (used for inline creation).
+    private func select(_ competitor: Competitor) {
+        if !isSelected(competitor) {
+            selectedCompetitors.append(competitor)
+        }
+    }
+
+    private func start() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        // Best-effort location capture before persisting.
+        let location = await locationManager.captureCurrentLocation()
+
+        let game = Game(title: trimmedTitle,
+                        hasTarget: hasTarget,
+                        targetPoints: hasTarget ? targetPoints : nil)
+        game.apply(location: location)
+        modelContext.insert(game)
+
+        for (index, competitor) in selectedCompetitors.enumerated() {
+            let participant: GameParticipant
+            switch competitor {
+            case .player(let player):
+                participant = GameParticipant(player: player, sortIndex: index)
+            case .team(let team):
+                participant = GameParticipant(team: team, sortIndex: index)
+            }
+            participant.game = game
+            modelContext.insert(participant)
+        }
+
+        dismiss()
+    }
+}
+
+/// A competitor chosen for a new game: either a single player or a team.
+/// Wraps the model object directly so the selection survives the object's
+/// persistent-ID changing on first save.
+private enum Competitor: Identifiable, Equatable {
+    case player(Player)
+    case team(Team)
+
+    var id: PersistentIdentifier {
+        switch self {
+        case .player(let player): return player.persistentModelID
+        case .team(let team): return team.persistentModelID
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .player(let player): return player.name
+        case .team(let team): return team.name
+        }
+    }
+
+    // Identity comparison: two cases are equal only if they wrap the same object.
+    static func == (lhs: Competitor, rhs: Competitor) -> Bool {
+        switch (lhs, rhs) {
+        case let (.player(a), .player(b)): return a === b
+        case let (.team(a), .team(b)): return a === b
+        default: return false
+        }
+    }
+}
+
+#Preview {
+    NewGameView()
+        .modelContainer(SampleData.container)
+        .environment(LocationManager())
+}

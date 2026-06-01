@@ -22,22 +22,156 @@ final class ScoreCardUITests: XCTestCase {
         // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
+    /// Verifies that players can be created inline while creating a game, are
+    /// auto-selected, and that the game can then be started — exercising the
+    /// "add new players/teams during game creation" requirement end to end.
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testCreatePlayersInlineDuringGameCreation() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-uitesting"]   // clean in-memory store
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        // Open the New Game sheet (empty-state button or the toolbar +).
+        let newGame = app.buttons["New Game"].firstMatch
+        XCTAssertTrue(newGame.waitForExistence(timeout: 10))
+        newGame.tap()
+
+        // Create two players without leaving the New Game screen.
+        addPlayerInline(app, name: "Alice")
+        addPlayerInline(app, name: "Bob")
+
+        // Both freshly created players are auto-selected and listed in order.
+        XCTAssertTrue(app.staticTexts["1. Alice"].waitForExistence(timeout: 5),
+                      "Inline-created player should be auto-selected and listed")
+        XCTAssertTrue(app.staticTexts["2. Bob"].waitForExistence(timeout: 5))
+
+        // Name the game.
+        let nameField = app.textFields["Game name (e.g. Scopa, Briscola)"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        nameField.tap()
+        nameField.typeText("Friendly Match")
+
+        // Start it; it should appear in the games list.
+        let start = app.buttons["Start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        XCTAssertTrue(start.isEnabled, "Start should be enabled with a name and 2 competitors")
+        start.tap()
+
+        XCTAssertTrue(app.staticTexts["Friendly Match"].waitForExistence(timeout: 10),
+                      "The newly started game should show in the list")
     }
 
+    /// Verifies the destructive "Delete All Data" reset asks for confirmation
+    /// and then clears the store.
     @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
+    func testDeleteAllDataResetsTheStore() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-uitesting"]   // clean in-memory store
+        app.launch()
+
+        // Add a player so there is something to delete.
+        app.tabBars.buttons["Players"].tap()
+        let addPlayer = app.buttons["Add Player"].firstMatch
+        XCTAssertTrue(addPlayer.waitForExistence(timeout: 10))
+        addPlayer.tap()
+        let field = app.textFields["Player name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("Temp Player")
+        app.buttons["Save"].tap()
+
+        // Go to Settings and reset.
+        app.tabBars.buttons["Settings"].tap()
+        let deleteButton = app.buttons["Delete All Data"]
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 5))
+        deleteButton.tap()
+
+        // Confirmation is required before anything is deleted.
+        let confirm = app.buttons["Delete Everything"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "A confirmation must be shown")
+        confirm.tap()
+
+        // Success alert confirms the wipe ran.
+        XCTAssertTrue(app.staticTexts["Data Deleted"].waitForExistence(timeout: 5))
+        app.buttons["OK"].tap()
+
+        // The store is actually empty: the Players tab shows its empty state.
+        app.tabBars.buttons["Players"].tap()
+        XCTAssertTrue(app.staticTexts["No Players"].waitForExistence(timeout: 5),
+                      "Players list should be empty after a full reset")
+    }
+
+    /// Full round trip: create data, back it up, delete everything, then restore
+    /// the backup from the in-app list and confirm the data returns.
+    @MainActor
+    func testBackupDeleteRestoreRoundTrip() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-uitesting"]   // clean in-memory store
+        app.launch()
+
+        // Create a uniquely-named player so we can recognise it after restore.
+        let marker = "Backup Round Trip Player"
+        app.tabBars.buttons["Players"].tap()
+        let addPlayer = app.buttons["Add Player"].firstMatch
+        XCTAssertTrue(addPlayer.waitForExistence(timeout: 10))
+        addPlayer.tap()
+        let nameField = app.textFields["Player name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        nameField.tap()
+        nameField.typeText(marker)
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts[marker].waitForExistence(timeout: 5))
+
+        // Back up.
+        app.tabBars.buttons["Settings"].tap()
+        let backUp = app.buttons["Back Up Now"]
+        XCTAssertTrue(backUp.waitForExistence(timeout: 5))
+        backUp.tap()
+        XCTAssertTrue(app.staticTexts["Backup Complete"].waitForExistence(timeout: 10))
+        app.buttons["OK"].tap()
+
+        // Delete everything.
+        app.buttons["Delete All Data"].tap()
+        XCTAssertTrue(app.buttons["Delete Everything"].waitForExistence(timeout: 5))
+        app.buttons["Delete Everything"].tap()
+        XCTAssertTrue(app.staticTexts["Data Deleted"].waitForExistence(timeout: 5))
+        app.buttons["OK"].tap()
+
+        // Confirm it's gone.
+        app.tabBars.buttons["Players"].tap()
+        XCTAssertTrue(app.staticTexts["No Players"].waitForExistence(timeout: 5))
+
+        // Restore from the in-app backup list (newest is first).
+        app.tabBars.buttons["Settings"].tap()
+        app.buttons["Restore from Backup…"].tap()
+        XCTAssertTrue(app.staticTexts["Available Backups"].waitForExistence(timeout: 10),
+                      "The backup just created should be listed")
+        let firstBackup = app.buttons["backupRow"].firstMatch
+        XCTAssertTrue(firstBackup.waitForExistence(timeout: 5), "A backup row should be present")
+        firstBackup.tap()
+        XCTAssertTrue(app.buttons["Replace All Data"].waitForExistence(timeout: 5))
+        app.buttons["Replace All Data"].tap()
+        XCTAssertTrue(app.staticTexts["Restore Complete"].waitForExistence(timeout: 10))
+        app.buttons["OK"].tap()
+
+        // The player is back.
+        app.tabBars.buttons["Players"].tap()
+        XCTAssertTrue(app.staticTexts[marker].waitForExistence(timeout: 5),
+                      "Restored data should include the original player")
+    }
+
+    /// Taps the inline "New Player" button, enters a name, and saves.
+    @MainActor
+    private func addPlayerInline(_ app: XCUIApplication, name: String) {
+        let newPlayer = app.buttons["New Player"]
+        XCTAssertTrue(newPlayer.waitForExistence(timeout: 5))
+        newPlayer.tap()
+
+        let field = app.textFields["Player name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(name)
+
+        app.buttons["Save"].tap()
     }
 }

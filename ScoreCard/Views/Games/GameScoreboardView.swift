@@ -21,8 +21,8 @@ struct GameScoreboardView: View {
     @State private var showSeatingSetup = false
 
     // Shown once when a competitor first reaches the target, inviting the user to
-    // end the game. If they decline, the board locks (see `isLockedAtTarget`)
-    // until the over-target score is corrected back down.
+    // end the game. If they decline, the board locks (the `reachedTarget` flag
+    // derived in `body`) until the over-target score is corrected back down.
     @State private var showTargetReachedPrompt = false
     @State private var declinedTargetEnd = false
 
@@ -34,56 +34,47 @@ struct GameScoreboardView: View {
 
     @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
 
-    /// Running count of every competitor's score entries in this game.
+    /// Running count of every competitor's score entries. Used only off the hot
+    /// path (to (re)arm the per-hand baseline), never per row during a render.
     private var totalEntryCount: Int {
         (game.participants ?? []).reduce(0) { $0 + ($1.scoreEntries?.count ?? 0) }
     }
 
-    /// A point must be scored in the current hand before the deal can pass.
-    private var canAdvanceHand: Bool { totalEntryCount > handBaselineEntryCount }
-
-    /// Competitors who have hit (or passed) the target score, if one is set.
-    private var winners: [GameParticipant] { game.winnersAtTarget }
-
-    /// Comma-separated names of the competitors at the target, for the prompt.
-    private var winnerNames: String {
-        winners.map(\.displayName).joined(separator: ", ")
-    }
-
-    /// True once someone reaches the target. While this holds, the board is
-    /// "locked": no points can be added and the deal can't pass — the only move
-    /// is to end the game or to reduce an over-target score (to fix a miscount).
-    private var isLockedAtTarget: Bool { !winners.isEmpty }
-
-    /// Whether the inline quick-add buttons should be off. Scoring is a once-per
-    /// hand action: as soon as a point lands this hand the buttons close, and
-    /// Next Hand reopens them. They also stay closed once the target is reached.
-    /// Corrections always go through the per-competitor detail sheet (ellipsis).
-    private var scoringDisabled: Bool { canAdvanceHand || isLockedAtTarget }
-
     var body: some View {
-        // Fixed table order (first dealer on top) — the rows don't reshuffle by
-        // score during play. Each competitor's total is summed once here so the
-        // banner and rows below reuse it instead of re-summing per access.
-        let scored = game.participantsInDealingOrder(dealingDirection)
-            .map { (participant: $0, score: $0.totalScore) }
+        // Everything the rows, banner, and dealer section need is derived ONCE
+        // here in a single pass over the competitors. Each competitor's entries
+        // are faulted and summed exactly once, then plain Int/Bool values are
+        // handed down — so a score tap doesn't re-sum and re-sort per row, which
+        // was the source of the lag on older devices.
+        let rows = game.participantsInDealingOrder(dealingDirection).map {
+            participant -> (participant: GameParticipant, score: Int, entries: Int) in
+            let entries = participant.scoreEntries ?? []
+            return (participant, entries.reduce(0) { $0 + $1.points }, entries.count)
+        }
         let target = game.hasTarget ? game.targetPoints : nil
+        let reachedTarget = target.map { t in rows.contains { $0.score >= t } } ?? false
+        // A point scored this hand closes the quick-add buttons and arms Next Hand.
+        let scoredThisHand = rows.reduce(0) { $0 + $1.entries } > handBaselineEntryCount
+        let scoringDisabled = scoredThisHand || reachedTarget
+        let winnerNames = target.map { t in
+            rows.filter { $0.score >= t }.map(\.participant.displayName).joined(separator: ", ")
+        } ?? ""
 
         return List {
             Section {
                 GameInfoHeader(game: game)
             }
 
-            if let target, scored.contains(where: { $0.score >= target }) {
+            if let target, reachedTarget {
                 Section {
-                    targetReachedBanner(scored: scored, target: target)
+                    targetReachedBanner(names: winnerNames, target: target)
                 }
             }
 
-            dealerSection
+            dealerSection(canAdvance: scoredThisHand, reached: reachedTarget)
 
             Section("Scores") {
-                ForEach(Array(scored.enumerated()), id: \.element.participant.persistentModelID) { index, entry in
+                ForEach(Array(rows.enumerated()), id: \.element.participant.persistentModelID) { index, entry in
                     ScoreboardRow(position: index + 1,
                                   participant: entry.participant,
                                   total: entry.score,
@@ -136,7 +127,7 @@ struct GameScoreboardView: View {
         } message: {
             Text("\(winnerNames) reached the \(game.targetPoints ?? 0)-point target. End the game and record the result? If the score was added by mistake, choose Not Yet and undo the last score to keep playing.")
         }
-        .onChange(of: isLockedAtTarget) { _, reached in
+        .onChange(of: reachedTarget) { _, reached in
             if reached {
                 // Only nudge once per time the target is crossed; re-arm for the
                 // next crossing once the situation has been resolved.
@@ -178,7 +169,7 @@ struct GameScoreboardView: View {
     }
 
     @ViewBuilder
-    private var dealerSection: some View {
+    private func dealerSection(canAdvance: Bool, reached: Bool) -> some View {
         Section {
             if let dealer = game.currentDealer {
                 HStack(spacing: 12) {
@@ -199,7 +190,7 @@ struct GameScoreboardView: View {
                         Label("Next Hand", systemImage: "arrow.turn.down.right")
                     }
                     .buttonStyle(.bordered)
-                    .disabled(!canAdvanceHand || isLockedAtTarget)
+                    .disabled(!canAdvance || reached)
                 }
                 Label("Hand \(game.currentHand)", systemImage: "rectangle.stack")
                     .font(.caption)
@@ -220,7 +211,7 @@ struct GameScoreboardView: View {
             Text("Current Hand")
         } footer: {
             if game.currentDealer != nil {
-                if canAdvanceHand {
+                if canAdvance {
                     Text("The deal passes \(dealingDirection.adverb). Tap Next Hand when this hand is done.")
                 } else {
                     Text("Score this hand to enable passing the deal.")
@@ -259,12 +250,11 @@ struct GameScoreboardView: View {
         persist()
     }
 
-    private func targetReachedBanner(scored: [(participant: GameParticipant, score: Int)], target: Int) -> some View {
-        let winners = scored.filter { $0.score >= target }.map(\.participant.displayName).joined(separator: ", ")
-        return Label {
+    private func targetReachedBanner(names: String, target: Int) -> some View {
+        Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Target reached!").font(.headline)
-                Text("\(winners) hit \(target) points. End the game to record the result, or undo the last score to fix a mistake and keep playing.")
+                Text("\(names) hit \(target) points. End the game to record the result, or undo the last score to fix a mistake and keep playing.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

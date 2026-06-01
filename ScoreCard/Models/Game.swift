@@ -81,6 +81,49 @@ final class Game {
         return rankedScores.filter { $0.score >= target }.map(\.participant)
     }
 
+    /// Competitors in a fixed table order for the live scoreboard, so the rows
+    /// don't shuffle by score during play.
+    ///
+    /// The first dealer (the one drawn at seat position 0) — or the team that
+    /// player belongs to — is on top; everyone else follows the dealing
+    /// rotation in the given direction. A team is placed by its earliest-dealing
+    /// member ("the first of its players to deal next"). When no seating has been
+    /// set up yet, falls back to the order the participants were added.
+    func participantsInDealingOrder(_ direction: DealingDirection) -> [GameParticipant] {
+        let parts = participants ?? []
+        let seats = orderedSeats
+        guard !seats.isEmpty else {
+            return parts.sorted { $0.sortIndex < $1.sortIndex }
+        }
+
+        // Dealing rank of each seated player: 0 for the first dealer, then in the
+        // order the deal passes. Seats are stored counter-clockwise from
+        // position 0, so counter-clockwise dealing keeps that order and clockwise
+        // dealing reverses everyone after the first dealer.
+        let count = seats.count
+        var rankOf: [PersistentIdentifier: Int] = [:]
+        for seat in seats {
+            guard let player = seat.player else { continue }
+            rankOf[player.persistentModelID] = ((seat.position * direction.step) % count + count) % count
+        }
+
+        func dealingRank(_ participant: GameParticipant) -> Int {
+            if let player = participant.player {
+                return rankOf[player.persistentModelID] ?? Int.max
+            }
+            if let team = participant.team {
+                return (team.members ?? []).compactMap { rankOf[$0.persistentModelID] }.min() ?? Int.max
+            }
+            return Int.max
+        }
+
+        return parts.sorted { a, b in
+            let ra = dealingRank(a), rb = dealingRank(b)
+            if ra != rb { return ra < rb }
+            return a.sortIndex < b.sortIndex
+        }
+    }
+
     /// Seats ordered counter-clockwise from the first dealer (position 0).
     var orderedSeats: [Seat] {
         (seats ?? []).sorted { $0.position < $1.position }

@@ -56,10 +56,11 @@ struct GameScoreboardView: View {
     private var isLockedAtTarget: Bool { !winners.isEmpty }
 
     var body: some View {
-        // Compute every competitor's total once per render (summing each one's
-        // score entries is O(entries)); the banner and the rows below all reuse
-        // these instead of re-summing and re-sorting on each access.
-        let ranked = game.rankedScores
+        // Fixed table order (first dealer on top) — the rows don't reshuffle by
+        // score during play. Each competitor's total is summed once here so the
+        // banner and rows below reuse it instead of re-summing per access.
+        let scored = game.participantsInDealingOrder(dealingDirection)
+            .map { (participant: $0, score: $0.totalScore) }
         let target = game.hasTarget ? game.targetPoints : nil
 
         return List {
@@ -67,18 +68,18 @@ struct GameScoreboardView: View {
                 GameInfoHeader(game: game)
             }
 
-            if let target, ranked.contains(where: { $0.score >= target }) {
+            if let target, scored.contains(where: { $0.score >= target }) {
                 Section {
-                    targetReachedBanner(ranked: ranked, target: target)
+                    targetReachedBanner(scored: scored, target: target)
                 }
             }
 
             dealerSection
 
             Section("Scores") {
-                ForEach(Array(ranked.enumerated()), id: \.element.participant.persistentModelID) { index, entry in
+                ForEach(Array(scored.enumerated()), id: \.element.participant.persistentModelID) { index, entry in
                     let overTarget = target.map { entry.score >= $0 } ?? false
-                    ScoreboardRow(rank: index + 1,
+                    ScoreboardRow(position: index + 1,
                                   participant: entry.participant,
                                   total: entry.score,
                                   target: target,
@@ -247,8 +248,8 @@ struct GameScoreboardView: View {
         persist()
     }
 
-    private func targetReachedBanner(ranked: [(participant: GameParticipant, score: Int)], target: Int) -> some View {
-        let winners = ranked.filter { $0.score >= target }.map(\.participant.displayName).joined(separator: ", ")
+    private func targetReachedBanner(scored: [(participant: GameParticipant, score: Int)], target: Int) -> some View {
+        let winners = scored.filter { $0.score >= target }.map(\.participant.displayName).joined(separator: ", ")
         return Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Target reached!").font(.headline)
@@ -271,7 +272,8 @@ struct GameScoreboardView: View {
 /// A single competitor row on the scoreboard, with inline quick-add buttons.
 private struct ScoreboardRow: View {
     @Environment(\.modelContext) private var modelContext
-    let rank: Int
+    /// 1-based place in the fixed table order (1 = first dealer), not a score rank.
+    let position: Int
     let participant: GameParticipant
     /// Precomputed by the parent so the row doesn't re-sum the score entries.
     let total: Int
@@ -291,7 +293,7 @@ private struct ScoreboardRow: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 12) {
-                rankBadge
+                positionBadge
                 VStack(alignment: .leading, spacing: 1) {
                     Text(participant.displayName)
                         .font(.headline)
@@ -354,21 +356,11 @@ private struct ScoreboardRow: View {
         }
     }
 
-    @ViewBuilder
-    private var rankBadge: some View {
-        let symbol = rank <= 3 ? "\(rank).circle.fill" : "\(rank).circle"
-        Image(systemName: symbol)
+    /// Neutral table-order badge (the list is in dealing order, not by score).
+    private var positionBadge: some View {
+        Image(systemName: "\(position).circle")
             .font(.title2)
-            .foregroundStyle(rankColor)
-    }
-
-    private var rankColor: Color {
-        switch rank {
-        case 1: return .yellow
-        case 2: return .gray
-        case 3: return .brown
-        default: return .secondary
-        }
+            .foregroundStyle(.secondary)
     }
 
     private func add(_ points: Int) {

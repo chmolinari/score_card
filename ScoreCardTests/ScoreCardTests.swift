@@ -438,6 +438,79 @@ struct ScoreCardTests {
         #expect(game.currentDealer == nil)
     }
 
+    // MARK: Scoreboard order follows the dealing rotation, not the score
+
+    @Test func participantsOrderByDealingRotation() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        var players: [Player] = []
+        for name in ["A", "B", "C", "D"] {
+            let player = Player(name: name); context.insert(player); players.append(player)
+        }
+        let game = Game(title: "Briscola"); context.insert(game)
+        var parts: [GameParticipant] = []
+        for (i, player) in players.enumerated() {
+            let p = GameParticipant(player: player, sortIndex: i); p.game = game; context.insert(p)
+            parts.append(p)
+        }
+        for (position, player) in players.enumerated() {
+            let seat = Seat(player: player, position: position); seat.game = game; context.insert(seat)
+        }
+        game.currentDealerIndex = 0
+        try context.save()
+
+        // Give the trailing seat the highest score to prove order ignores it.
+        addPoints(99, to: parts[3], in: context)
+
+        // Counter-clockwise keeps the seat order: first dealer (A) on top.
+        #expect(game.participantsInDealingOrder(.counterClockwise).map(\.displayName) == ["A", "B", "C", "D"])
+        // Clockwise: first dealer still on top, the rest follow the deal backwards.
+        #expect(game.participantsInDealingOrder(.clockwise).map(\.displayName) == ["A", "D", "C", "B"])
+    }
+
+    @Test func teamsOrderByEarliestDealingMember() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        var players: [Player] = []
+        for name in ["A", "B", "C", "D"] {
+            let player = Player(name: name); context.insert(player); players.append(player)
+        }
+        // Two teams; B (seat 1) is the first of Reds to deal, A (seat 0) for Blues.
+        let blues = Team(name: "Blues", members: [players[0], players[2]])  // A, C
+        let reds = Team(name: "Reds", members: [players[1], players[3]])     // B, D
+        [blues, reds].forEach(context.insert)
+        let game = Game(title: "Tressette"); context.insert(game)
+        let pBlues = GameParticipant(team: blues, sortIndex: 0); pBlues.game = game
+        let pReds = GameParticipant(team: reds, sortIndex: 1); pReds.game = game
+        [pBlues, pReds].forEach(context.insert)
+        for (position, player) in players.enumerated() {
+            let seat = Seat(player: player, position: position); seat.game = game; context.insert(seat)
+        }
+        game.currentDealerIndex = 0
+        try context.save()
+
+        // First dealer is A (Blues), so Blues is on top counter-clockwise.
+        #expect(game.participantsInDealingOrder(.counterClockwise).map(\.displayName) == ["Blues", "Reds"])
+        // Clockwise the deal goes A → D(Reds) next, so Reds' earliest member (D)
+        // outranks Blues' next member (C): the team with A still leads, though.
+        #expect(game.participantsInDealingOrder(.clockwise).map(\.displayName) == ["Blues", "Reds"])
+    }
+
+    @Test func dealingOrderFallsBackToAddedOrderWithoutSeating() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice"); let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+        let game = Game(title: "Briscola"); context.insert(game)
+        let pa = GameParticipant(player: alice, sortIndex: 0); pa.game = game
+        let pb = GameParticipant(player: bob, sortIndex: 1); pb.game = game
+        [pa, pb].forEach(context.insert)
+        addPoints(50, to: pb, in: context)  // higher score must not reorder
+        try context.save()
+
+        #expect(game.participantsInDealingOrder(.counterClockwise).map(\.displayName) == ["Alice", "Bob"])
+    }
+
     @Test func draftExpandsTeamsToPeopleAndDedupes() throws {
         let container = try makeContainer()
         let context = container.mainContext

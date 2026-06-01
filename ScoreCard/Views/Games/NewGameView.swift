@@ -299,6 +299,13 @@ struct NewGameView: View {
         }
         game.currentDealerIndex = 0   // position 0 is the first dealer
 
+        // Persist now so the game and its participants/seats get their permanent
+        // persistentModelIDs before the scoreboard appears. Otherwise the first
+        // save during play (e.g. Next Hand) would flip every new object's ID,
+        // breaking the scoreboard's view identity (rows keyed by participant ID,
+        // and the navigation item) and freezing it.
+        try? modelContext.save()
+
         onStart(game)
         dismiss()
     }

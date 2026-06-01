@@ -17,6 +17,7 @@ import SwiftData
 struct SeatingArrangementView: View {
     let people: [Player]
     var confirmTitle: String = "Start Game"
+    var direction: DealingDirection = .counterClockwise
     let onConfirm: ([Player]) async -> Void
 
     @State private var dealer: Player?
@@ -50,7 +51,7 @@ struct SeatingArrangementView: View {
             } header: {
                 Text("Dealer")
             } footer: {
-                Text("The first dealer is random. Drag the others into seating order going counter-clockwise from the dealer — the deal passes that way each hand. In team games, the dealer is still an individual player.")
+                Text("The first dealer is random. Drag the others into the order they sit around the table — the deal passes \(direction.adverb) each hand. In team games, the dealer is still an individual player.")
             }
 
             Section("Then, counter-clockwise") {

@@ -401,13 +401,35 @@ struct ScoreCardTests {
         try context.save()
 
         #expect(game.currentDealer?.name == "A")
-        #expect(game.nextDealer?.name == "B")
-        game.advanceDealer()
+        #expect(game.nextDealer(.counterClockwise)?.name == "B")
+        game.advanceDealer(.counterClockwise)
         #expect(game.currentDealer?.name == "B")
-        game.advanceDealer(); game.advanceDealer()
+        game.advanceDealer(.counterClockwise); game.advanceDealer(.counterClockwise)
         #expect(game.currentDealer?.name == "D")
-        game.advanceDealer()                       // wraps around the table
+        game.advanceDealer(.counterClockwise)      // wraps around the table
         #expect(game.currentDealer?.name == "A")
+    }
+
+    @Test func dealerRotatesClockwiseAndWraps() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        var players: [Player] = []
+        for name in ["A", "B", "C", "D"] {
+            let player = Player(name: name); context.insert(player); players.append(player)
+        }
+        let game = Game(title: "Scopa"); context.insert(game)
+        for (position, player) in players.enumerated() {
+            let seat = Seat(player: player, position: position); seat.game = game; context.insert(seat)
+        }
+        game.currentDealerIndex = 0
+        try context.save()
+
+        #expect(game.currentDealer?.name == "A")
+        #expect(game.nextDealer(.clockwise)?.name == "D")   // clockwise = previous seat
+        game.advanceDealer(.clockwise)                       // wraps backwards
+        #expect(game.currentDealer?.name == "D")
+        game.advanceDealer(.clockwise)
+        #expect(game.currentDealer?.name == "C")
     }
 
     @Test func gameWithoutSeatingHasNoDealer() throws {

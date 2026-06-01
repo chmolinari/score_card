@@ -79,28 +79,27 @@ final class Game {
     var hasSeating: Bool { !(seats ?? []).isEmpty }
 
     /// The player dealing the current hand, if seating is set.
-    var currentDealer: Player? {
-        let seats = orderedSeats
-        guard !seats.isEmpty else { return nil }
-        let count = seats.count
-        let index = ((currentDealerIndex % count) + count) % count
-        return seats[index].player
+    var currentDealer: Player? { dealer(atOffset: 0) }
+
+    /// The player who deals the next hand, given the dealing direction.
+    func nextDealer(_ direction: DealingDirection) -> Player? {
+        dealer(atOffset: direction.step)
     }
 
-    /// The player who deals the next hand (the next seat counter-clockwise).
-    var nextDealer: Player? {
-        let seats = orderedSeats
-        guard !seats.isEmpty else { return nil }
-        let count = seats.count
-        let index = ((currentDealerIndex + 1) % count + count) % count
-        return seats[index].player
-    }
-
-    /// Move the deal to the next player counter-clockwise (start of a new hand).
-    func advanceDealer() {
+    /// Move the deal to the next player in the given direction (new hand).
+    func advanceDealer(_ direction: DealingDirection) {
         let count = orderedSeats.count
         guard count > 0 else { return }
-        currentDealerIndex = (currentDealerIndex + 1) % count
+        currentDealerIndex = ((currentDealerIndex + direction.step) % count + count) % count
+    }
+
+    /// Player seated `offset` steps from the current dealer (wrapping).
+    private func dealer(atOffset offset: Int) -> Player? {
+        let seats = orderedSeats
+        guard !seats.isEmpty else { return nil }
+        let count = seats.count
+        let index = ((currentDealerIndex + offset) % count + count) % count
+        return seats[index].player
     }
 
     /// CoreLocation coordinate reconstructed from the stored components.

@@ -19,6 +19,8 @@ struct GameScoreboardView: View {
     @State private var showCloseConfirmation = false
     @State private var showSeatingSetup = false
 
+    @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
+
     var body: some View {
         List {
             Section {
@@ -56,7 +58,7 @@ struct GameScoreboardView: View {
         }
         .sheet(isPresented: $showSeatingSetup) {
             NavigationStack {
-                SeatingArrangementView(people: peopleForSeating, confirmTitle: "Save") { ordered in
+                SeatingArrangementView(people: peopleForSeating, confirmTitle: "Save", direction: dealingDirection) { ordered in
                     applySeating(ordered)
                     showSeatingSetup = false
                 }
@@ -94,13 +96,13 @@ struct GameScoreboardView: View {
                     }
                     Spacer()
                     Button {
-                        withAnimation { game.advanceDealer() }
+                        withAnimation { game.advanceDealer(dealingDirection) }
                     } label: {
                         Label("Next Hand", systemImage: "arrow.turn.down.right")
                     }
                     .buttonStyle(.bordered)
                 }
-                if let next = game.nextDealer {
+                if let next = game.nextDealer(dealingDirection) {
                     Text("Next to deal: \(next.name)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -116,7 +118,7 @@ struct GameScoreboardView: View {
             Text("Current Hand")
         } footer: {
             if game.currentDealer != nil {
-                Text("The deal passes counter-clockwise. Tap Next Hand when a new hand begins.")
+                Text("The deal passes \(dealingDirection.adverb). Tap Next Hand when a new hand begins.")
             }
         }
     }

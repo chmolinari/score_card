@@ -21,6 +21,8 @@ struct NewGameView: View {
     @Query(sort: \Player.name) private var players: [Player]
     @Query(sort: \Team.name) private var teams: [Team]
 
+    @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
+
     @State private var title: String = ""
     @State private var hasTarget = false
     @State private var targetPoints = 11
@@ -96,7 +98,7 @@ struct NewGameView: View {
                 }
             }
             .navigationDestination(item: $draft) { draft in
-                SeatingArrangementView(people: draft.people, confirmTitle: "Start Game") { seating in
+                SeatingArrangementView(people: draft.people, confirmTitle: "Start Game", direction: dealingDirection) { seating in
                     await startGame(draft: draft, seating: seating)
                 }
             }

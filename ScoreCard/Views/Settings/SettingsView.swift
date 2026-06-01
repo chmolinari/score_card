@@ -19,6 +19,8 @@ struct SettingsView: View {
 
     @State private var accountStatus: CloudAccountStatus = .checking
 
+    @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
+
     // Backup / reset state. (Restore lives in BackupListView.)
     @State private var isWorking = false
     @State private var lastBackup: SavedBackup?
@@ -47,6 +49,18 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                 } footer: {
                     Text("Players, teams, and games are stored on this device and automatically synced and backed up to your private iCloud account. Sign in to iCloud in the Settings app to enable sync across your devices.")
+                }
+
+                Section {
+                    Picker("Dealing order", selection: $dealingDirection) {
+                        ForEach(DealingDirection.allCases) { direction in
+                            Label(direction.label, systemImage: direction.systemImage).tag(direction)
+                        }
+                    }
+                } header: {
+                    Text("Gameplay")
+                } footer: {
+                    Text("The direction the deal passes around the table after each hand.")
                 }
 
                 Section("Your Data") {

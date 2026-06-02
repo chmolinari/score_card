@@ -70,14 +70,20 @@ final class GameParticipant {
         (scoreEntries ?? []).reduce(0) { $0 + $1.points }
     }
 
-    /// Whether this competitor finished first in its (closed) game. Ties for the
-    /// top score count as a win for everyone tied. Always false while the game
-    /// is still open.
+    /// Whether this competitor was the sole winner of its (closed) game. A tie
+    /// for the top score is NOT a win — it's a draw (see `isDraw`). Always false
+    /// while the game is still open.
     var isWinner: Bool {
         guard let game, !game.isOpen else { return false }
-        let scores = (game.participants ?? []).map(\.totalScore)
-        guard let best = scores.max() else { return false }
-        return totalScore == best
+        let top = game.topScorers
+        return top.count == 1 && top.first === self
+    }
+
+    /// Whether this competitor tied for the top score in a closed (drawn) game.
+    /// Only the competitors sharing the winning score drew; lower scorers did not.
+    var isDraw: Bool {
+        guard let game, game.isDraw else { return false }
+        return game.topScorers.contains { $0 === self }
     }
 
     /// Score entries newest-first, for the per-competitor history view.

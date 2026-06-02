@@ -213,7 +213,7 @@ struct ScoreCardTests {
         #expect(bob.tally.inProgress == 1)
     }
 
-    @Test func tallyCountsTiesAsWinForBoth() throws {
+    @Test func tallyCountsTiesAsDrawForBoth() throws {
         let container = try makeContainer()
         let context = container.mainContext
         let red = Team(name: "Red")
@@ -229,8 +229,42 @@ struct ScoreCardTests {
         game.closedAt = .now
         try context.save()
 
-        #expect(red.tally.won == 1)
-        #expect(blue.tally.won == 1)
+        // A shared top score is a draw, not a win, for everyone tied.
+        #expect(game.isDraw)
+        #expect(red.tally.won == 0)
+        #expect(red.tally.drawn == 1)
+        #expect(red.tally.played == 1)
+        #expect(blue.tally.won == 0)
+        #expect(blue.tally.drawn == 1)
+    }
+
+    @Test func drawOnlyCountsForTiedTopScorers() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let a = Player(name: "A")
+        let b = Player(name: "B")
+        let c = Player(name: "C")
+        [a, b, c].forEach(context.insert)
+
+        // A and B tie for the top at 10; C trails at 4.
+        let game = Game(title: "Three-way")
+        context.insert(game)
+        let pa = GameParticipant(player: a, sortIndex: 0); pa.game = game; context.insert(pa)
+        let pb = GameParticipant(player: b, sortIndex: 1); pb.game = game; context.insert(pb)
+        let pc = GameParticipant(player: c, sortIndex: 2); pc.game = game; context.insert(pc)
+        addPoints(10, to: pa, in: context)
+        addPoints(10, to: pb, in: context)
+        addPoints(4, to: pc, in: context)
+        game.closedAt = .now
+        try context.save()
+
+        #expect(game.isDraw)
+        // The two leaders drew; the trailing player neither won nor drew.
+        #expect(a.tally.drawn == 1)
+        #expect(b.tally.drawn == 1)
+        #expect(c.tally.drawn == 0)
+        #expect(c.tally.won == 0)
+        #expect(c.tally.played == 1)
     }
 
     @Test func emptyTallyForNewPlayer() throws {

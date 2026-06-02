@@ -20,6 +20,11 @@ struct TallyBadge: View {
                 Label("\(tally.won)", systemImage: "trophy.fill")
                     .foregroundStyle(.yellow)
 
+                if tally.drawn > 0 {
+                    Label("\(tally.drawn)", systemImage: "equal.circle.fill")
+                        .foregroundStyle(Theme.plum)
+                }
+
                 Label("\(tally.played)", systemImage: "flag.checkered")
                     .foregroundStyle(.secondary)
 
@@ -42,7 +47,9 @@ struct TallyBadge: View {
     }
 
     private var accessibilityText: String {
-        var parts = ["\(tally.won) won", "\(tally.played) played"]
+        var parts = ["\(tally.won) won"]
+        if tally.drawn > 0 { parts.append("\(tally.drawn) drawn") }
+        parts.append("\(tally.played) played")
         if let pct = tally.winPercentage { parts.append("\(pct) percent") }
         if tally.inProgress > 0 { parts.append("\(tally.inProgress) in progress") }
         return parts.joined(separator: ", ")
@@ -52,6 +59,7 @@ struct TallyBadge: View {
 #Preview {
     List {
         TallyBadge(tally: Tally(played: 5, won: 3, inProgress: 1))
+        TallyBadge(tally: Tally(played: 6, won: 3, drawn: 2, inProgress: 1))
         TallyBadge(tally: Tally(played: 0, won: 0, inProgress: 0))
         TallyBadge(tally: Tally(played: 2, won: 0, inProgress: 0))
     }

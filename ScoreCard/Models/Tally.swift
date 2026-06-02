@@ -12,8 +12,10 @@ import Foundation
 struct Tally: Equatable {
     /// Number of finished (closed) games this competitor took part in.
     var played: Int = 0
-    /// Finished games won. A tie for first counts as a win for everyone tied.
+    /// Finished games won outright (sole top score). Draws are counted separately.
     var won: Int = 0
+    /// Finished games that ended in a draw (a tie for the top score).
+    var drawn: Int = 0
     /// Games currently still open.
     var inProgress: Int = 0
 
@@ -35,7 +37,11 @@ struct Tally: Equatable {
                 tally.inProgress += 1
             } else {
                 tally.played += 1
-                if participation.isWinner { tally.won += 1 }
+                if participation.isWinner {
+                    tally.won += 1
+                } else if participation.isDraw {
+                    tally.drawn += 1
+                }
             }
         }
         return tally

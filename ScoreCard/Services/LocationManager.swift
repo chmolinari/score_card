@@ -93,8 +93,25 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         return capture
     }
 
-    private static func describe(_ placemark: CLPlacemark) -> String? {
-        let parts = [placemark.name, placemark.locality, placemark.country]
+    /// Turn a placemark into a readable street address, e.g.
+    /// "Via Toledo 1, Napoli, Italy". Falls back through coarser components when
+    /// finer ones are missing. Shared with the game card so it can resolve an
+    /// address on the fly for games that only stored raw coordinates.
+    static func describe(_ placemark: CLPlacemark) -> String? {
+        // Prefer an explicit street ("thoroughfare" + house number); otherwise
+        // use the point-of-interest / feature name CoreLocation provides.
+        let street: String?
+        if let thoroughfare = placemark.thoroughfare {
+            if let number = placemark.subThoroughfare {
+                street = "\(thoroughfare) \(number)"
+            } else {
+                street = thoroughfare
+            }
+        } else {
+            street = placemark.name
+        }
+
+        let parts = [street, placemark.locality, placemark.country]
             .compactMap { $0 }
             .reduce(into: [String]()) { acc, part in
                 if !acc.contains(part) { acc.append(part) }

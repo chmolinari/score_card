@@ -19,6 +19,17 @@ private func signedPoints(_ value: Int) -> String {
 struct GameInfoHeader: View {
     let game: Game
 
+    // Address resolved on the fly for games that only stored raw coordinates
+    // (e.g. captured before reverse geocoding succeeded). We never show raw
+    // latitude/longitude — only a human-readable address.
+    @State private var resolvedAddress: String?
+
+    /// The address to show: the one captured with the game, or one we reverse
+    /// geocode lazily from its coordinate.
+    private var displayAddress: String? {
+        game.locationName ?? resolvedAddress
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -33,11 +44,8 @@ struct GameInfoHeader: View {
             Label(GameFormatting.dateTime(game.createdAt), systemImage: "calendar")
                 .font(.subheadline)
 
-            if let place = game.locationName {
+            if let place = displayAddress {
                 Label(place, systemImage: "mappin.and.ellipse")
-                    .font(.subheadline)
-            } else if game.coordinate != nil {
-                Label(coordinateText, systemImage: "mappin.and.ellipse")
                     .font(.subheadline)
             }
 
@@ -49,11 +57,18 @@ struct GameInfoHeader: View {
             }
         }
         .padding(.vertical, 4)
+        .task(id: game.persistentModelID) { await resolveAddressIfNeeded() }
     }
 
-    private var coordinateText: String {
-        guard let c = game.coordinate else { return "" }
-        return String(format: "%.4f, %.4f", c.latitude, c.longitude)
+    /// Reverse geocode the stored coordinate into a street address when the game
+    /// has a location but no saved place name. Best-effort and silent on failure.
+    private func resolveAddressIfNeeded() async {
+        resolvedAddress = nil
+        guard game.locationName == nil, let coordinate = game.coordinate else { return }
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        if let placemark = try? await CLGeocoder().reverseGeocodeLocation(location).first {
+            resolvedAddress = LocationManager.describe(placemark)
+        }
     }
 
     @ViewBuilder

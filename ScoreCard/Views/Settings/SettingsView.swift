@@ -30,20 +30,6 @@ struct SettingsView: View {
 
     private var isEmptyStore: Bool { players.isEmpty && teams.isEmpty && games.isEmpty }
 
-    /// Whether this launch disabled CloudKit mirroring via the "-noCloudKit"
-    /// diagnostic flag. Surfaced in Settings so an A/B test of sync-related
-    /// slowness can confirm at a glance which mode the running build is in.
-    private var syncDisabledByFlag: Bool {
-        ProcessInfo.processInfo.arguments.contains("-noCloudKit")
-    }
-
-    private var syncSectionFooter: String {
-        if syncDisabledByFlag {
-            return "This build was launched with the -noCloudKit diagnostic flag, so CloudKit mirroring is OFF for this run. Data stays on this device only. Relaunch without the flag to restore sync."
-        }
-        return "Players, teams, and games are stored on this device and automatically synced and backed up to your private iCloud account. Sign in to iCloud in the Settings app to enable sync across your devices."
-    }
-
     var body: some View {
         NavigationStack {
             List {
@@ -61,13 +47,8 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 4)
-
-                    LabeledContent("Sync engine") {
-                        Text(syncDisabledByFlag ? "Disabled (-noCloudKit)" : "Enabled")
-                            .foregroundStyle(syncDisabledByFlag ? .orange : .green)
-                    }
                 } footer: {
-                    Text(syncSectionFooter)
+                    Text("Players, teams, and games are stored on this device and automatically synced and backed up to your private iCloud account. Sign in to iCloud in the Settings app to enable sync across your devices.")
                 }
 
                 Section {

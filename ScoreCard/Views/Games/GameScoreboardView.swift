@@ -236,6 +236,21 @@ struct GameScoreboardView: View {
                 .tint(Theme.accent)
                 .disabled(!canAdvance || reached)
 
+                // A drawn hand scores nothing, so "Next Hand" stays disabled.
+                // This passes the deal anyway — only meaningful before any point
+                // is scored this hand (otherwise it wasn't a draw).
+                Button {
+                    advanceHand()
+                } label: {
+                    Label("Hand Was a Draw", systemImage: "equal.circle")
+                        .font(.subheadline)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .tint(.secondary)
+                .disabled(canAdvance || reached)
+
                 if let next = game.nextDealer(dealingDirection) {
                     Label("Next to deal: \(next.name)", systemImage: "arrow.right")
                         .font(.caption)
@@ -243,7 +258,7 @@ struct GameScoreboardView: View {
                 }
                 Text(canAdvance
                      ? "The deal passes \(dealingDirection.adverb). Tap Next Hand when this hand is done."
-                     : "Score this hand to enable passing the deal.")
+                     : "Score this hand to pass the deal, or mark it a draw if no one scored.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }

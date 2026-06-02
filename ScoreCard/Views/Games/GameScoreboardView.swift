@@ -32,6 +32,15 @@ struct GameScoreboardView: View {
     // immediately disabled again until the next score lands.
     @State private var handBaselineEntryCount = 0
 
+    // Bumped on every manual score change. SwiftData does NOT reliably fire
+    // SwiftUI observation for a to-many relationship (`scoreEntries`) that's
+    // mutated via its inverse (`entry.participant = …`) once the context has
+    // been saved — which first happens when "Next Hand" persists the hand. So
+    // after the first hand the board would read correct model values but never
+    // be told to redraw. Touching this @State on each add invalidates the body
+    // deterministically, independent of relationship observation.
+    @State private var scoreRevision = 0
+
     @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
 
     /// Running count of every competitor's score entries. Used only off the hot
@@ -41,6 +50,12 @@ struct GameScoreboardView: View {
     }
 
     var body: some View {
+        // Establishes the per-render dependency on manual score mutations (see
+        // `scoreRevision`). Changing @State always invalidates this view, so the
+        // single-pass derivation below re-reads the live (possibly unsaved)
+        // totals whenever a point is added.
+        _ = scoreRevision
+
         // Everything the rows, banner, and dealer section need is derived ONCE
         // here in a single pass over the competitors. Each competitor's entries
         // are faulted and summed exactly once, then plain Int/Bool values are
@@ -79,7 +94,8 @@ struct GameScoreboardView: View {
                                   participant: entry.participant,
                                   total: entry.score,
                                   target: target,
-                                  scoringDisabled: scoringDisabled) {
+                                  scoringDisabled: scoringDisabled,
+                                  onScore: { scoreRevision += 1 }) {
                         scoringParticipant = entry.participant
                     }
                 }
@@ -283,6 +299,10 @@ private struct ScoreboardRow: View {
     /// True when the inline quick-add buttons are closed (a point was already
     /// scored this hand, or the target's been reached). The ellipsis stays live.
     let scoringDisabled: Bool
+    /// Called after a point is added so the parent can invalidate its derived
+    /// totals (relationship-inverse mutations aren't reliably observed — see
+    /// `GameScoreboardView.scoreRevision`).
+    let onScore: () -> Void
     let onTapMore: () -> Void
 
     private var reachedTarget: Bool {
@@ -348,6 +368,7 @@ private struct ScoreboardRow: View {
         let entry = ScoreEntry(points: points)
         entry.participant = participant
         modelContext.insert(entry)
+        onScore()
     }
 }
 

@@ -120,9 +120,19 @@ struct NewGameView: View {
         }
     }
 
+    /// True once any team is selected. A game is between teams OR between
+    /// individual players — never a mix — so selecting a team turns this into a
+    /// team game and the players list is hidden.
+    private var isTeamGame: Bool {
+        selectedCompetitors.contains { if case .team = $0 { return true } else { return false } }
+    }
+
     @ViewBuilder
     private var playersSection: some View {
-        if showsMostUsedPlayers {
+        if isTeamGame {
+            // Hidden: this is a team game, so individual players don't apply.
+            EmptyView()
+        } else if showsMostUsedPlayers {
             Section("Most Used Players") {
                 ForEach(frequentPlayers) { player in
                     selectableRow(for: .player(player), systemImage: "person.circle.fill")
@@ -257,15 +267,23 @@ struct NewGameView: View {
         if let index = selectedCompetitors.firstIndex(of: competitor) {
             selectedCompetitors.remove(at: index)
         } else {
+            // Selecting a team makes this a team game: drop any individual
+            // players already chosen so the two never mix.
+            if case .team = competitor {
+                selectedCompetitors.removeAll { if case .player = $0 { return true } else { return false } }
+            }
             selectedCompetitors.append(competitor)
         }
     }
 
     /// Add a competitor if it isn't already chosen (used for inline creation).
     private func select(_ competitor: GameCompetitor) {
-        if !isSelected(competitor) {
-            selectedCompetitors.append(competitor)
+        guard !isSelected(competitor) else { return }
+        // Creating a team inline turns this into a team game; clear any players.
+        if case .team = competitor {
+            selectedCompetitors.removeAll { if case .player = $0 { return true } else { return false } }
         }
+        selectedCompetitors.append(competitor)
     }
 
     /// Create the game, its participants, and the seating decided on the previous

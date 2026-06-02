@@ -87,9 +87,8 @@ final class ScoreCardUITests: XCTestCase {
 
         // Go to Settings and reset.
         app.tabBars.buttons["Settings"].tap()
-        let deleteButton = app.buttons["Delete All Data"]
-        XCTAssertTrue(deleteButton.waitForExistence(timeout: 5))
-        deleteButton.tap()
+        XCTAssertTrue(app.buttons["Back Up Now"].waitForExistence(timeout: 5))
+        tapWhenScrolledIntoView(app.buttons["Delete All Data"], in: app)
 
         // Confirmation is required before anything is deleted.
         let confirm = app.buttons["Delete Everything"]
@@ -136,7 +135,7 @@ final class ScoreCardUITests: XCTestCase {
         app.buttons["OK"].tap()
 
         // Delete everything.
-        app.buttons["Delete All Data"].tap()
+        tapWhenScrolledIntoView(app.buttons["Delete All Data"], in: app)
         XCTAssertTrue(app.buttons["Delete Everything"].waitForExistence(timeout: 5))
         app.buttons["Delete Everything"].tap()
         XCTAssertTrue(app.staticTexts["Data Deleted"].waitForExistence(timeout: 5))
@@ -178,5 +177,23 @@ final class ScoreCardUITests: XCTestCase {
         field.typeText(name)
 
         app.buttons["Save"].tap()
+    }
+
+    /// Scrolls the current scroll view up until the element is hittable, then
+    /// taps it. SwiftUI's lazy `List` doesn't instantiate off-screen cells, so a
+    /// control below the fold (e.g. "Delete All Data" at the bottom of Settings)
+    /// isn't in the accessibility tree until it's scrolled into view.
+    @MainActor
+    private func tapWhenScrolledIntoView(_ element: XCUIElement,
+                                         in app: XCUIApplication,
+                                         maxSwipes: Int = 8) {
+        var swipes = 0
+        while !element.isHittable && swipes < maxSwipes {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(element.isHittable,
+                      "\(element) never scrolled into a hittable position after \(maxSwipes) swipes")
+        element.tap()
     }
 }

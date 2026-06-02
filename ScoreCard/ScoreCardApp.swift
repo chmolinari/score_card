@@ -72,11 +72,6 @@ struct ScoreCardApp: App {
             }
         }
 
-        // Optional one-time sample data for testing: launch with "-seedSampleData".
-        if ProcessInfo.processInfo.arguments.contains("-seedSampleData") {
-            SampleDataSeeder.seedIfNeeded(into: container.mainContext)
-        }
-
         return container
     }
 }

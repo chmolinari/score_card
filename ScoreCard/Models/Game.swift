@@ -79,6 +79,18 @@ final class Game {
     /// The participant currently in the lead, if the game has any.
     var leader: GameParticipant? { rankedScores.first?.participant }
 
+    /// Competitors that share the top score. While the game is open this is the
+    /// current front-runner(s); once closed it's the final winner(s) — more than
+    /// one means the game ended in a draw.
+    var topScorers: [GameParticipant] {
+        let ranked = rankedScores
+        guard let best = ranked.first?.score else { return [] }
+        return ranked.filter { $0.score == best }.map(\.participant)
+    }
+
+    /// A closed game is a draw when no single competitor has the top score.
+    var isDraw: Bool { !isOpen && topScorers.count > 1 }
+
     /// The participant(s) that have reached the target, if one is set.
     var winnersAtTarget: [GameParticipant] {
         guard hasTarget, let target = targetPoints else { return [] }

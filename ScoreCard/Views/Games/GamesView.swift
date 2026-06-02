@@ -159,6 +159,14 @@ private struct GameRow: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(Theme.teal.opacity(0.15), in: Capsule())
+        } else if game.isDraw {
+            Label("Draw", systemImage: "equal.circle.fill")
+                .labelStyle(.titleAndIcon)
+                .font(.caption2.bold())
+                .foregroundStyle(Theme.plum)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Theme.plum.opacity(0.15), in: Capsule())
         } else if let leader = game.leader {
             Label(leader.displayName, systemImage: "trophy.fill")
                 .labelStyle(.titleAndIcon)

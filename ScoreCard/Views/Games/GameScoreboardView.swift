@@ -78,17 +78,25 @@ struct GameScoreboardView: View {
         return List {
             Section {
                 GameInfoHeader(game: game)
+                    .cardTile()
+                    .cardRow()
             }
 
             if let target, reachedTarget {
                 Section {
                     targetReachedBanner(names: winnerNames, target: target)
+                        .cardRow()
                 }
             }
 
-            dealerSection(canAdvance: scoredThisHand, reached: reachedTarget)
+            Section {
+                dealerCard(canAdvance: scoredThisHand, reached: reachedTarget)
+                    .cardRow()
+            } header: {
+                PlayfulSectionHeader(title: "Current Hand", systemImage: "hand.draw.fill")
+            }
 
-            Section("Scores") {
+            Section {
                 ForEach(Array(rows.enumerated()), id: \.element.participant.persistentModelID) { index, entry in
                     ScoreboardRow(position: index + 1,
                                   participant: entry.participant,
@@ -98,9 +106,15 @@ struct GameScoreboardView: View {
                                   onScore: { scoreRevision += 1 }) {
                         scoringParticipant = entry.participant
                     }
+                    .cardRow()
                 }
+            } header: {
+                PlayfulSectionHeader(title: "Scores", systemImage: "list.number")
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(AppBackground())
         .navigationTitle(game.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -185,54 +199,67 @@ struct GameScoreboardView: View {
     }
 
     @ViewBuilder
-    private func dealerSection(canAdvance: Bool, reached: Bool) -> some View {
-        Section {
-            if let dealer = game.currentDealer {
+    private func dealerCard(canAdvance: Bool, reached: Bool) -> some View {
+        if let dealer = game.currentDealer {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
-                    Image(systemName: "hand.draw.fill")
-                        .font(.title3)
-                        .foregroundStyle(.tint)
+                    Avatar(name: dealer.name, systemImage: "hand.draw.fill", size: 44)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Dealer this hand")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(dealer.name)
-                            .font(.headline)
+                            .font(.title3.weight(.bold))
                     }
                     Spacer()
-                    Button {
-                        advanceHand()
-                    } label: {
-                        Label("Next Hand", systemImage: "arrow.turn.down.right")
+                    VStack(spacing: 2) {
+                        Text("HAND")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                        Text("\(game.currentHand)")
+                            .font(.system(.title2, design: .rounded).weight(.bold))
+                            .foregroundStyle(Theme.accent)
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(!canAdvance || reached)
                 }
-                Label("Hand \(game.currentHand)", systemImage: "rectangle.stack")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
+                Button {
+                    advanceHand()
+                } label: {
+                    Label("Next Hand", systemImage: "arrow.turn.down.right")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(Theme.accent)
+                .disabled(!canAdvance || reached)
+
                 if let next = game.nextDealer(dealingDirection) {
-                    Text("Next to deal: \(next.name)")
+                    Label("Next to deal: \(next.name)", systemImage: "arrow.right")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            } else {
-                Button {
-                    showSeatingSetup = true
-                } label: {
-                    Label("Set Up Seating & Dealer", systemImage: "person.3.sequence.fill")
-                }
+                Text(canAdvance
+                     ? "The deal passes \(dealingDirection.adverb). Tap Next Hand when this hand is done."
+                     : "Score this hand to enable passing the deal.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
-        } header: {
-            Text("Current Hand")
-        } footer: {
-            if game.currentDealer != nil {
-                if canAdvance {
-                    Text("The deal passes \(dealingDirection.adverb). Tap Next Hand when this hand is done.")
-                } else {
-                    Text("Score this hand to enable passing the deal.")
-                }
+            .cardTile()
+        } else {
+            Button {
+                showSeatingSetup = true
+            } label: {
+                Label("Set Up Seating & Dealer", systemImage: "person.3.sequence.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(Theme.accent)
+            .cardTile()
         }
     }
 
@@ -267,17 +294,27 @@ struct GameScoreboardView: View {
     }
 
     private func targetReachedBanner(names: String, target: Int) -> some View {
-        Label {
+        HStack(spacing: 12) {
+            Image(systemName: "flag.checkered.circle.fill")
+                .font(.largeTitle)
+                .foregroundStyle(.white)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Target reached!").font(.headline)
+                Text("Target reached!")
+                    .font(.headline)
+                    .foregroundStyle(.white)
                 Text("\(names) hit \(target) points. End the game to record the result, or undo the last score to fix a mistake and keep playing.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.9))
             }
-        } icon: {
-            Image(systemName: "flag.checkered.circle.fill")
-                .foregroundStyle(.green)
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(colors: [Theme.amber, Theme.coral],
+                           startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
+        .shadow(color: Theme.coral.opacity(0.35), radius: 10, x: 0, y: 5)
     }
 
     private func closeGame() {
@@ -311,9 +348,12 @@ private struct ScoreboardRow: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             HStack(spacing: 12) {
-                positionBadge
+                Avatar(name: participant.displayName,
+                       systemImage: participant.isTeam ? "person.2.fill" : nil,
+                       size: 46)
+                    .overlay(alignment: .bottomTrailing) { positionBadge }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(participant.displayName)
                         .font(.headline)
@@ -323,15 +363,17 @@ private struct ScoreboardRow: View {
                 }
                 Spacer()
                 Text("\(total)")
-                    .font(.system(.title, design: .rounded).weight(.bold))
-                    .foregroundStyle(reachedTarget ? .green : .primary)
+                    .font(.system(size: 40, weight: .heavy, design: .rounded))
+                    .foregroundStyle(reachedTarget ? Theme.amber : Color.primary)
                     .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(total)))
+                    .animation(.snappy, value: total)
             }
 
             controls
                 .font(.subheadline)
         }
-        .padding(.vertical, 4)
+        .cardTile()
     }
 
     /// The per-row action area. The quick-add buttons close after a point is
@@ -344,6 +386,7 @@ private struct ScoreboardRow: View {
             ForEach([1, 2, 3, 5], id: \.self) { amount in
                 Button("+\(amount)") { add(amount) }
                     .buttonStyle(.bordered)
+                    .tint(Theme.teal)
                     .frame(maxWidth: .infinity)
                     .disabled(scoringDisabled)
             }
@@ -354,14 +397,19 @@ private struct ScoreboardRow: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
+            .tint(.secondary)
         }
     }
 
-    /// Neutral table-order badge (the list is in dealing order, not by score).
+    /// Neutral table-order badge (the list is in dealing order, not by score),
+    /// tucked onto the avatar.
     private var positionBadge: some View {
-        Image(systemName: "\(position).circle")
-            .font(.title2)
-            .foregroundStyle(.secondary)
+        Text("\(position)")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.white)
+            .frame(width: 18, height: 18)
+            .background(Theme.plum, in: Circle())
+            .overlay(Circle().stroke(Theme.cardSurface, lineWidth: 2))
     }
 
     private func add(_ points: Int) {

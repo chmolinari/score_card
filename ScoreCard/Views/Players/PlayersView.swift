@@ -36,11 +36,15 @@ struct PlayersView: View {
                                 PlayerRow(player: player)
                             }
                             .buttonStyle(.plain)
+                            .cardRow()
                         }
                         .onDelete(perform: deletePlayers)
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
             }
+            .background(AppBackground())
             .navigationTitle("Players")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -74,23 +78,23 @@ private struct PlayerRow: View {
     let player: Player
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "person.circle.fill")
-                .font(.title2)
-                .foregroundStyle(.tint)
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 14) {
+            Avatar(name: player.name, size: 46)
+            VStack(alignment: .leading, spacing: 4) {
                 Text(player.name)
-                    .font(.body)
+                    .font(.headline)
                 let teams = player.sortedTeams
                 if !teams.isEmpty {
-                    Text(teams.map(\.name).joined(separator: ", "))
+                    Label(teams.map(\.name).joined(separator: ", "), systemImage: "person.2.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
                 TallyBadge(tally: player.tally)
             }
             Spacer()
         }
+        .cardTile()
         .contentShape(Rectangle())
     }
 }

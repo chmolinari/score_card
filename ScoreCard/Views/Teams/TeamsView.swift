@@ -36,11 +36,15 @@ struct TeamsView: View {
                                 TeamRow(team: team)
                             }
                             .buttonStyle(.plain)
+                            .cardRow()
                         }
                         .onDelete(perform: deleteTeams)
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
             }
+            .background(AppBackground())
             .navigationTitle("Teams")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -74,20 +78,20 @@ private struct TeamRow: View {
     let team: Team
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "person.2.circle.fill")
-                .font(.title2)
-                .foregroundStyle(.tint)
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 14) {
+            Avatar(name: team.name, systemImage: "person.2.fill", size: 46)
+            VStack(alignment: .leading, spacing: 4) {
                 Text(team.name)
-                    .font(.body)
+                    .font(.headline)
                 Text(team.rosterSummary)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 TallyBadge(tally: team.tally)
             }
             Spacer()
         }
+        .cardTile()
         .contentShape(Rectangle())
     }
 }

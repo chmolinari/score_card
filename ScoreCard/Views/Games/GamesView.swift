@@ -39,32 +39,43 @@ struct GamesView: View {
                 } else {
                     List {
                         if !openGames.isEmpty {
-                            Section("In Progress") {
+                            Section {
                                 ForEach(openGames) { game in
                                     NavigationLink {
                                         GameScoreboardView(game: game)
                                     } label: {
                                         GameRow(game: game)
                                     }
+                                    .cardRow()
                                 }
                                 .onDelete { delete(openGames, at: $0) }
+                            } header: {
+                                PlayfulSectionHeader(title: "In Progress",
+                                                     systemImage: "dot.radiowaves.left.and.right")
                             }
                         }
                         if !closedGames.isEmpty {
-                            Section("History") {
+                            Section {
                                 ForEach(closedGames) { game in
                                     NavigationLink {
                                         GameDetailView(game: game)
                                     } label: {
                                         GameRow(game: game)
                                     }
+                                    .cardRow()
                                 }
                                 .onDelete { delete(closedGames, at: $0) }
+                            } header: {
+                                PlayfulSectionHeader(title: "History",
+                                                     systemImage: "clock.arrow.circlepath")
                             }
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
             }
+            .background(AppBackground())
             .navigationTitle("Games")
             .navigationDestination(item: $openedGame) { game in
                 GameScoreboardView(game: game)
@@ -103,43 +114,60 @@ private struct GameRow: View {
     let game: Game
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(game.title)
-                    .font(.headline)
-                Spacer()
-                if game.isOpen {
-                    Label("Live", systemImage: "dot.radiowaves.left.and.right")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption.bold())
-                        .foregroundStyle(.green)
-                } else if let leader = game.leader {
-                    Label(leader.displayName, systemImage: "trophy.fill")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+        HStack(spacing: 14) {
+            Avatar(name: game.title,
+                   systemImage: game.isOpen ? "suit.club.fill" : "checkmark.seal.fill",
+                   size: 46)
 
-            Text(scoreSummary)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(game.title)
+                        .font(.headline)
+                    Spacer()
+                    statusBadge
+                }
 
-            HStack(spacing: 12) {
-                Label(GameFormatting.dateTime(game.createdAt), systemImage: "calendar")
-                if let place = game.locationName {
-                    Label(place, systemImage: "mappin.and.ellipse")
-                        .lineLimit(1)
+                Text(scoreSummary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                HStack(spacing: 12) {
+                    Label(GameFormatting.dateTime(game.createdAt), systemImage: "calendar")
+                    if let place = game.locationName {
+                        Label(place, systemImage: "mappin.and.ellipse")
+                            .lineLimit(1)
+                    }
+                    if game.hasTarget, let target = game.targetPoints {
+                        Label("to \(target)", systemImage: "flag.checkered")
+                    }
                 }
-                if game.hasTarget, let target = game.targetPoints {
-                    Label("to \(target)", systemImage: "flag.checkered")
-                }
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
             }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 2)
+        .cardTile()
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        if game.isOpen {
+            Label("Live", systemImage: "dot.radiowaves.left.and.right")
+                .labelStyle(.titleAndIcon)
+                .font(.caption2.bold())
+                .foregroundStyle(Theme.teal)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Theme.teal.opacity(0.15), in: Capsule())
+        } else if let leader = game.leader {
+            Label(leader.displayName, systemImage: "trophy.fill")
+                .labelStyle(.titleAndIcon)
+                .font(.caption2.bold())
+                .foregroundStyle(Theme.amber)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Theme.amber.opacity(0.15), in: Capsule())
+        }
     }
 
     private var scoreSummary: String {

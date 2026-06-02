@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-ScoreCard is an iOS app for keeping the score of card games (Scopa, Briscola, etc.). Built with SwiftUI and SwiftData. Bundle identifier `com.christianmolinari.ScoreCard`, iOS 26.5 deployment target, Swift 5.0, universal (iPhone + iPad).
+ScoreCard is an iOS app for keeping the score of card games (Scopa, Briscola, etc.). Built with SwiftUI and SwiftData. Bundle identifier `com.christianmolinari.ScoreCardApp`, iOS 17.0 deployment target, Swift 5.0, universal (iPhone + iPad).
 
 ### Domain model (`ScoreCard/Models/`)
 
@@ -30,7 +30,7 @@ All five types are SwiftData `@Model` classes and are CloudKit-compatible: every
 - `CloudKitStatusProbe` (`Services/`) is the only direct CloudKit usage — it reads iCloud account status for the Settings screen. Actual syncing is automatic via SwiftData.
 - Settings also offers manual **backup/restore** and a full **reset**. `BackupSnapshot` is a portable Codable mirror of the store (relationships encoded as array indices, not SwiftData IDs). `BackupService` (@MainActor) does `exportData`/`decodeSnapshot`/`restore`/`eraseAll`; `BackupStorage` does the file I/O — writing to the app's iCloud Drive container (`Documents`) when available, else local, and a coordinated read for imports. The UI backs up to iCloud Drive, and `BackupListView` lists existing backups (iCloud + local, via `BackupStorage.listBackups()`) for one-tap restore plus a `.json` document-picker import; reset sits behind a confirmation. Both restore and reset go through `eraseAll`, which deletes objects **individually** (not via batch `delete(model:)`) so live `@Query` views refresh immediately. Requires the iCloud Documents entitlement + ubiquity container (in `ScoreCard.entitlements`) and `NSUbiquitousContainers` (in `Info.plist`).
 
-The entitlements declare CloudKit (container `iCloud.com.christianmolinari.ScoreCard`) and APNs (`aps-environment = development`, `UIBackgroundModes = remote-notification`). `Info.plist` carries `NSLocationWhenInUseUsageDescription`. Note `GENERATE_INFOPLIST_FILE = YES` is on alongside the explicit `INFOPLIST_FILE`, so keys added to `Info.plist` are merged with generated ones.
+The entitlements declare CloudKit (container `iCloud.com.christianmolinari.ScoreCardApp`) and APNs (`aps-environment = development`, `UIBackgroundModes = remote-notification`). `Info.plist` carries `NSLocationWhenInUseUsageDescription`. Note `GENERATE_INFOPLIST_FILE = YES` is on alongside the explicit `INFOPLIST_FILE`, so keys added to `Info.plist` are merged with generated ones.
 
 ## Build, run, test
 

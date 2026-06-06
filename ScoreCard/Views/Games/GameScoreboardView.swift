@@ -76,12 +76,6 @@ struct GameScoreboardView: View {
         } ?? ""
 
         return List {
-            Section {
-                GameInfoHeader(game: game)
-                    .cardTile()
-                    .cardRow()
-            }
-
             if let target, reachedTarget {
                 Section {
                     targetReachedBanner(names: winnerNames, target: target)
@@ -110,6 +104,14 @@ struct GameScoreboardView: View {
                 }
             } header: {
                 PlayfulSectionHeader(title: "Scores", systemImage: "list.number")
+            }
+
+            Section {
+                GameInfoHeader(game: game)
+                    .cardTile()
+                    .cardRow()
+            } header: {
+                PlayfulSectionHeader(title: "Details", systemImage: "info.circle.fill")
             }
         }
         .listStyle(.plain)

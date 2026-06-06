@@ -15,10 +15,6 @@ struct GameDetailView: View {
 
     var body: some View {
         List {
-            Section {
-                GameInfoHeader(game: game)
-            }
-
             Section(game.isDraw ? "Final Standings · Draw" : "Final Standings") {
                 ForEach(Array(game.rankedParticipants.enumerated()), id: \.element.persistentModelID) { index, participant in
                     HStack(spacing: 12) {
@@ -45,6 +41,10 @@ struct GameDetailView: View {
                     .frame(height: 200)
                     .listRowInsets(EdgeInsets())
                 }
+            }
+
+            Section("Details") {
+                GameInfoHeader(game: game)
             }
         }
         .navigationTitle(game.title)

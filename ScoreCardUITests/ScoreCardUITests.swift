@@ -45,11 +45,15 @@ final class ScoreCardUITests: XCTestCase {
                       "Inline-created player should be auto-selected and listed")
         XCTAssertTrue(app.staticTexts["2. Bob"].waitForExistence(timeout: 5))
 
-        // Name the game.
+        // Add a game name to the editable list; it auto-selects on creation.
+        app.buttons["New Game Name"].tap()
         let nameField = app.textFields["Game name (e.g. Scopa, Briscola)"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 5))
         nameField.tap()
         nameField.typeText("Friendly Match")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts["Friendly Match"].waitForExistence(timeout: 5),
+                      "The newly added game name should appear in the list")
 
         // Proceed to the seating/dealer step.
         let next = app.buttons["Next"]

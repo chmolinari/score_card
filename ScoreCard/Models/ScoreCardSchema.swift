@@ -14,6 +14,7 @@ enum ScoreCardSchema {
     static let models: [any PersistentModel.Type] = [
         Player.self,
         Team.self,
+        GameName.self,
         Game.self,
         GameParticipant.self,
         ScoreEntry.self,

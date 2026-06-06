@@ -18,10 +18,20 @@ struct BackupSnapshot: Codable {
     var players: [PlayerDTO] = []
     var teams: [TeamDTO] = []
     var games: [GameDTO] = []
+    // Optional so backups written before the editable game-name list still
+    // decode (and so older app versions, which ignore unknown keys, can still
+    // restore newer backups — hence the format version is left unchanged).
+    var gameNames: [GameNameDTO]? = nil
 
     struct PlayerDTO: Codable {
         var name: String
         var createdAt: Date
+    }
+
+    struct GameNameDTO: Codable {
+        var name: String
+        var createdAt: Date
+        var lastUsedAt: Date
     }
 
     struct TeamDTO: Codable {

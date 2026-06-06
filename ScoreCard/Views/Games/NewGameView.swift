@@ -24,10 +24,16 @@ struct NewGameView: View {
 
     @Query(sort: \Player.name) private var players: [Player]
     @Query(sort: \Team.name) private var teams: [Team]
+    @Query(sort: \GameName.name) private var gameNames: [GameName]
 
     @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
+    /// Set once the existing games have been mined for their distinct names, so
+    /// the one-time seeding never repeats.
+    @AppStorage("hasSeededGameNames") private var hasSeededGameNames = false
 
-    @State private var title: String = ""
+    /// The chosen game name. Pre-selected to the most recently used one when the
+    /// sheet appears; the game's title is copied from it on start.
+    @State private var selectedGameName: GameName?
     @State private var hasTarget = false
     @State private var targetPoints = 11
 
@@ -39,19 +45,17 @@ struct NewGameView: View {
 
     @State private var isAddingPlayer = false
     @State private var isAddingTeam = false
+    @State private var isAddingGameName = false
     /// Set when the user taps Next; drives navigation to the seating step.
     @State private var draft: GameDraft?
 
-    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var canProceed: Bool { !trimmedTitle.isEmpty && selectedCompetitors.count >= 2 }
+    private var gameTitle: String { selectedGameName?.name ?? "" }
+    private var canProceed: Bool { selectedGameName != nil && selectedCompetitors.count >= 2 }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Game") {
-                    TextField("Game name (e.g. Scopa, Briscola)", text: $title)
-                        .textInputAutocapitalization(.words)
-                }
+                gameNameSection
 
                 Section {
                     Toggle("Play to a target score", isOn: $hasTarget.animation())
@@ -93,7 +97,7 @@ struct NewGameView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Next") {
-                        draft = GameDraft(title: trimmedTitle,
+                        draft = GameDraft(title: gameTitle,
                                           hasTarget: hasTarget,
                                           targetPoints: hasTarget ? targetPoints : nil,
                                           competitors: selectedCompetitors)
@@ -116,8 +120,79 @@ struct NewGameView: View {
                     select(.team(newTeam))
                 }
             }
+            .sheet(isPresented: $isAddingGameName) {
+                GameNameEditView(gameName: nil) { newName in
+                    selectedGameName = newName
+                }
+            }
             .onAppear { locationManager.requestAuthorizationIfNeeded() }
+            .task { prepareGameNames() }
         }
+    }
+
+    // MARK: - Game name
+
+    @ViewBuilder
+    private var gameNameSection: some View {
+        Section {
+            if gameNames.isEmpty {
+                Text("No game names yet. Add one to get started.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(gameNames) { gameName in
+                    gameNameRow(gameName)
+                }
+                .onDelete(perform: deleteGameNames)
+            }
+            Button { isAddingGameName = true } label: {
+                Label("New Game Name", systemImage: "plus")
+            }
+        } header: {
+            Text("Game")
+        } footer: {
+            Text("Pick the game you're playing, or add a new one. The last name you used is selected by default.")
+        }
+    }
+
+    private func gameNameRow(_ gameName: GameName) -> some View {
+        Button {
+            selectedGameName = gameName
+        } label: {
+            HStack {
+                Image(systemName: "suit.club.fill").foregroundStyle(.tint)
+                Text(gameName.name).foregroundStyle(.primary)
+                Spacer()
+                if selectedGameName?.persistentModelID == gameName.persistentModelID {
+                    Image(systemName: "checkmark").foregroundStyle(.tint)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func deleteGameNames(at offsets: IndexSet) {
+        for index in offsets {
+            let gameName = gameNames[index]
+            if selectedGameName?.persistentModelID == gameName.persistentModelID {
+                selectedGameName = nil
+            }
+            modelContext.delete(gameName)
+        }
+    }
+
+    /// Seed the name list from existing games the first time ever, then
+    /// pre-select the most recently used name. Runs each time the sheet opens so
+    /// the default reflects the latest "last used"; the seeding itself is one-off.
+    private func prepareGameNames() {
+        if !hasSeededGameNames {
+            GameName.seedFromExistingGames(context: modelContext)
+            hasSeededGameNames = true
+        }
+        guard selectedGameName == nil else { return }
+        let all = (try? modelContext.fetch(FetchDescriptor<GameName>())) ?? []
+        selectedGameName = GameNamePicker.defaultSelection(all, lastUsed: { $0.lastUsedAt }, name: { $0.name })
     }
 
     /// True once any team is selected. A game is between teams OR between
@@ -291,6 +366,9 @@ struct NewGameView: View {
     private func startGame(draft: GameDraft, seating: [Player]) async {
         // Best-effort location capture before persisting.
         let location = await locationManager.captureCurrentLocation()
+
+        // Remember this as the most recently used name so it pre-selects next time.
+        selectedGameName?.lastUsedAt = .now
 
         let game = Game(title: draft.title,
                         hasTarget: draft.hasTarget,

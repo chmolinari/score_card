@@ -69,6 +69,7 @@ enum BackupService {
         let players = try context.fetch(FetchDescriptor<Player>(sortBy: [SortDescriptor(\.createdAt)]))
         let teams = try context.fetch(FetchDescriptor<Team>(sortBy: [SortDescriptor(\.createdAt)]))
         let games = try context.fetch(FetchDescriptor<Game>(sortBy: [SortDescriptor(\.createdAt)]))
+        let gameNames = try context.fetch(FetchDescriptor<GameName>(sortBy: [SortDescriptor(\.name)]))
 
         var playerIndex: [PersistentIdentifier: Int] = [:]
         for (i, p) in players.enumerated() { playerIndex[p.persistentModelID] = i }
@@ -77,6 +78,7 @@ enum BackupService {
 
         var snapshot = BackupSnapshot()
         snapshot.players = players.map { .init(name: $0.name, createdAt: $0.createdAt) }
+        snapshot.gameNames = gameNames.map { .init(name: $0.name, createdAt: $0.createdAt, lastUsedAt: $0.lastUsedAt) }
         snapshot.teams = teams.map { team in
             .init(name: team.name,
                   createdAt: team.createdAt,
@@ -128,6 +130,10 @@ enum BackupService {
     /// Replace the entire store with the contents of `snapshot`.
     static func restore(_ snapshot: BackupSnapshot, into context: ModelContext) throws {
         try eraseAll(in: context)
+
+        for dto in snapshot.gameNames ?? [] {
+            context.insert(GameName(name: dto.name, createdAt: dto.createdAt, lastUsedAt: dto.lastUsedAt))
+        }
 
         var players: [Player] = []
         for dto in snapshot.players {
@@ -201,6 +207,7 @@ enum BackupService {
         for game in try context.fetch(FetchDescriptor<Game>()) { context.delete(game) }
         for team in try context.fetch(FetchDescriptor<Team>()) { context.delete(team) }
         for player in try context.fetch(FetchDescriptor<Player>()) { context.delete(player) }
+        for gameName in try context.fetch(FetchDescriptor<GameName>()) { context.delete(gameName) }
         try context.save()
     }
 }

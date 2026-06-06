@@ -607,4 +607,110 @@ struct ScoreCardTests {
         #expect(pa.player == nil)
         #expect(pa.displayName == "Alice")
     }
+
+    // MARK: Editable game-name list + last-used default
+
+    @Test func gameNameDefaults() throws {
+        let gameName = GameName(name: "Scopa")
+        #expect(gameName.name == "Scopa")
+        #expect(gameName.lastUsedAt == .distantPast)   // never used yet
+    }
+
+    /// The default pre-selection is the most recently used name; never-used names
+    /// (all sharing `.distantPast`) and ties fall back to alphabetical order.
+    @Test func defaultSelectionPicksMostRecentlyUsed() {
+        let scopa = GameName(name: "Scopa", lastUsedAt: Date(timeIntervalSince1970: 100))
+        let briscola = GameName(name: "Briscola", lastUsedAt: Date(timeIntervalSince1970: 500))
+        let tresette = GameName(name: "Tresette")   // never used
+
+        let pick = GameNamePicker.defaultSelection([scopa, briscola, tresette],
+                                                   lastUsed: { $0.lastUsedAt },
+                                                   name: { $0.name })
+        #expect(pick?.name == "Briscola")
+
+        // All unused → alphabetical.
+        let a = GameName(name: "Zilch"), b = GameName(name: "Alpha")
+        let tiePick = GameNamePicker.defaultSelection([a, b],
+                                                      lastUsed: { $0.lastUsedAt },
+                                                      name: { $0.name })
+        #expect(tiePick?.name == "Alpha")
+
+        #expect(GameNamePicker.defaultSelection([] as [GameName],
+                                                lastUsed: { $0.lastUsedAt },
+                                                name: { $0.name }) == nil)
+    }
+
+    /// Seeding mines distinct titles from existing games (case-insensitively),
+    /// stamping each name with the most recent matching game's creation date.
+    @Test func seedingBuildsDistinctNamesFromGames() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let older = Game(title: "scopa")        // same name, different case + older
+        older.createdAt = Date(timeIntervalSince1970: 100)
+        let newer = Game(title: "Scopa")        // most recent spelling wins
+        newer.createdAt = Date(timeIntervalSince1970: 900)
+        let briscola = Game(title: "Briscola")
+        briscola.createdAt = Date(timeIntervalSince1970: 300)
+        [older, newer, briscola].forEach(context.insert)
+        try context.save()
+
+        GameName.seedFromExistingGames(context: context)
+
+        let names = try context.fetch(FetchDescriptor<GameName>(sortBy: [SortDescriptor(\.name)]))
+        #expect(names.map(\.name) == ["Briscola", "Scopa"])   // de-duped, newest spelling
+        let scopa = try #require(names.first { $0.name == "Scopa" })
+        #expect(scopa.lastUsedAt == Date(timeIntervalSince1970: 900))   // latest matching game
+    }
+
+    @Test func seedingIsSkippedWhenNamesAlreadyExist() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(GameName(name: "Existing"))
+        let game = Game(title: "Scopa")
+        context.insert(game)
+        try context.save()
+
+        GameName.seedFromExistingGames(context: context)
+
+        let names = try context.fetch(FetchDescriptor<GameName>())
+        #expect(names.map(\.name) == ["Existing"])   // untouched; no game mined
+    }
+
+    /// A game name is just a template: deleting it must not affect games that
+    /// already copied their title from it.
+    @Test func deletingGameNameLeavesGamesUntouched() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let gameName = GameName(name: "Scopa")
+        let game = Game(title: "Scopa")
+        context.insert(gameName)
+        context.insert(game)
+        try context.save()
+
+        context.delete(gameName)
+        try context.save()
+
+        let games = try context.fetch(FetchDescriptor<Game>())
+        #expect(games.map(\.title) == ["Scopa"])
+        #expect(try context.fetch(FetchDescriptor<GameName>()).isEmpty)
+    }
+
+    @Test func backupRoundTripIncludesGameNames() throws {
+        let sourceContainer = try makeContainer()
+        let source = sourceContainer.mainContext
+        source.insert(GameName(name: "Scopa", lastUsedAt: Date(timeIntervalSince1970: 700)))
+        source.insert(GameName(name: "Briscola"))
+        try source.save()
+
+        let data = try BackupService.exportData(from: source)
+        let destContainer = try makeContainer()
+        let dest = destContainer.mainContext
+        try BackupService.restore(BackupService.decodeSnapshot(data), into: dest)
+
+        let restored = try dest.fetch(FetchDescriptor<GameName>(sortBy: [SortDescriptor(\.name)]))
+        #expect(restored.map(\.name) == ["Briscola", "Scopa"])
+        let scopa = try #require(restored.first { $0.name == "Scopa" })
+        #expect(scopa.lastUsedAt == Date(timeIntervalSince1970: 700))
+    }
 }

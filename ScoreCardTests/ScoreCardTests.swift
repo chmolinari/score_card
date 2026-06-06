@@ -293,6 +293,63 @@ struct ScoreCardTests {
         #expect(!top.contains { $0.name == "Cal" })  // zero-usage excluded
     }
 
+    // MARK: Players/Teams list ordering
+
+    /// A stand-in for a player or team: the sorter only needs a name and a tally.
+    private struct SortableCompetitor {
+        let name: String
+        let tally: Tally
+    }
+
+    @Test func competitorSorterOrdersByNameInBothDirections() {
+        let items = [
+            SortableCompetitor(name: "Bob", tally: Tally()),
+            SortableCompetitor(name: "alice", tally: Tally()),      // lower-case sorts with "A"
+            SortableCompetitor(name: "Player 10", tally: Tally()),
+            SortableCompetitor(name: "Player 2", tally: Tally()),   // numeric-aware: 2 before 10
+        ]
+
+        let ascending = CompetitorSorter.sorted(items, by: .nameAscending,
+                                                name: { $0.name }, tally: { $0.tally })
+        #expect(ascending.map(\.name) == ["alice", "Bob", "Player 2", "Player 10"])
+
+        let descending = CompetitorSorter.sorted(items, by: .nameDescending,
+                                                 name: { $0.name }, tally: { $0.tally })
+        #expect(descending.map(\.name) == ["Player 10", "Player 2", "Bob", "alice"])
+    }
+
+    @Test func competitorSorterRanksByWinsThenWinPercentThenName() {
+        let items = [
+            SortableCompetitor(name: "Cara", tally: Tally(played: 4, won: 2)),   // 2 wins, 50%
+            SortableCompetitor(name: "Abe",  tally: Tally(played: 10, won: 5)),  // 5 wins
+            SortableCompetitor(name: "Bea",  tally: Tally(played: 2, won: 2)),   // 2 wins, 100%
+            SortableCompetitor(name: "Dan",  tally: Tally(played: 4, won: 2)),   // ties Cara → name breaks it
+            SortableCompetitor(name: "Eve",  tally: Tally()),                    // no games → last
+        ]
+
+        let descending = CompetitorSorter.sorted(items, by: .scoreDescending,
+                                                 name: { $0.name }, tally: { $0.tally })
+        // Most wins first; within the 2-win group, higher win% first (Bea 100%
+        // before the 50% pair), the 50% pair alphabetical; no-games last.
+        #expect(descending.map(\.name) == ["Abe", "Bea", "Cara", "Dan", "Eve"])
+
+        let ascending = CompetitorSorter.sorted(items, by: .scoreAscending,
+                                                name: { $0.name }, tally: { $0.tally })
+        // Fewest wins first (no-games has zero wins → first), then lower win%.
+        #expect(ascending.map(\.name) == ["Eve", "Cara", "Dan", "Bea", "Abe"])
+    }
+
+    @Test func competitorSorterRanksUnplayedBelowAnAllLossRecord() {
+        let items = [
+            SortableCompetitor(name: "Ghost", tally: Tally()),                    // never played → nil %
+            SortableCompetitor(name: "Loser", tally: Tally(played: 3, won: 0)),   // played, 0%
+        ]
+        let descending = CompetitorSorter.sorted(items, by: .scoreDescending,
+                                                 name: { $0.name }, tally: { $0.tally })
+        // Both have zero wins, but a real 0% record outranks "no games yet".
+        #expect(descending.map(\.name) == ["Loser", "Ghost"])
+    }
+
     @Test func usageCountReflectsParticipations() throws {
         let container = try makeContainer()
         let context = container.mainContext

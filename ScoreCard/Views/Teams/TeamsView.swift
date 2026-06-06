@@ -11,9 +11,16 @@ import SwiftData
 struct TeamsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Team.name) private var teams: [Team]
+    @AppStorage(CompetitorSortOrder.teamsStorageKey) private var sortOrder: CompetitorSortOrder = .nameAscending
 
     @State private var editingTeam: Team?
     @State private var isAddingTeam = false
+
+    /// Teams in the user's chosen order. "Score" sorts can't live in the
+    /// `@Query` because the tally is computed on the fly, so we re-sort here.
+    private var sortedTeams: [Team] {
+        CompetitorSorter.sorted(teams, by: sortOrder, name: \.name, tally: \.tally)
+    }
 
     var body: some View {
         NavigationStack {
@@ -29,7 +36,7 @@ struct TeamsView: View {
                     }
                 } else {
                     List {
-                        ForEach(teams) { team in
+                        ForEach(sortedTeams) { team in
                             Button {
                                 editingTeam = team
                             } label: {
@@ -47,15 +54,16 @@ struct TeamsView: View {
             .background(AppBackground())
             .navigationTitle("Teams")
             .toolbar {
+                if !teams.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) { EditButton() }
+                    ToolbarItem(placement: .topBarTrailing) { sortMenu }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isAddingTeam = true
                     } label: {
                         Label("Add Team", systemImage: "plus")
                     }
-                }
-                if !teams.isEmpty {
-                    ToolbarItem(placement: .topBarLeading) { EditButton() }
                 }
             }
             .sheet(isPresented: $isAddingTeam) {
@@ -67,9 +75,25 @@ struct TeamsView: View {
         }
     }
 
+    /// A menu to pick how the list is ordered; the choice is remembered.
+    private var sortMenu: some View {
+        Menu {
+            Picker("Sort By", selection: $sortOrder) {
+                ForEach(CompetitorSortOrder.allCases) { order in
+                    Label(order.label, systemImage: order.systemImage).tag(order)
+                }
+            }
+        } label: {
+            Label("Sort", systemImage: "arrow.up.arrow.down")
+        }
+        // Announce the active order to VoiceOver ("Sort, Name (A–Z)").
+        .accessibilityValue(sortOrder.label)
+    }
+
     private func deleteTeams(at offsets: IndexSet) {
+        // Offsets index into the displayed (sorted) list, not the raw query.
         for index in offsets {
-            modelContext.delete(teams[index])
+            modelContext.delete(sortedTeams[index])
         }
     }
 }

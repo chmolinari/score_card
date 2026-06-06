@@ -11,9 +11,16 @@ import SwiftData
 struct PlayersView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Player.name) private var players: [Player]
+    @AppStorage(CompetitorSortOrder.playersStorageKey) private var sortOrder: CompetitorSortOrder = .nameAscending
 
     @State private var editingPlayer: Player?
     @State private var isAddingPlayer = false
+
+    /// Players in the user's chosen order. "Score" sorts can't live in the
+    /// `@Query` because the tally is computed on the fly, so we re-sort here.
+    private var sortedPlayers: [Player] {
+        CompetitorSorter.sorted(players, by: sortOrder, name: \.name, tally: \.tally)
+    }
 
     var body: some View {
         NavigationStack {
@@ -29,7 +36,7 @@ struct PlayersView: View {
                     }
                 } else {
                     List {
-                        ForEach(players) { player in
+                        ForEach(sortedPlayers) { player in
                             Button {
                                 editingPlayer = player
                             } label: {
@@ -47,15 +54,16 @@ struct PlayersView: View {
             .background(AppBackground())
             .navigationTitle("Players")
             .toolbar {
+                if !players.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) { EditButton() }
+                    ToolbarItem(placement: .topBarTrailing) { sortMenu }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isAddingPlayer = true
                     } label: {
                         Label("Add Player", systemImage: "plus")
                     }
-                }
-                if !players.isEmpty {
-                    ToolbarItem(placement: .topBarLeading) { EditButton() }
                 }
             }
             .sheet(isPresented: $isAddingPlayer) {
@@ -67,9 +75,25 @@ struct PlayersView: View {
         }
     }
 
+    /// A menu to pick how the list is ordered; the choice is remembered.
+    private var sortMenu: some View {
+        Menu {
+            Picker("Sort By", selection: $sortOrder) {
+                ForEach(CompetitorSortOrder.allCases) { order in
+                    Label(order.label, systemImage: order.systemImage).tag(order)
+                }
+            }
+        } label: {
+            Label("Sort", systemImage: "arrow.up.arrow.down")
+        }
+        // Announce the active order to VoiceOver ("Sort, Name (A–Z)").
+        .accessibilityValue(sortOrder.label)
+    }
+
     private func deletePlayers(at offsets: IndexSet) {
+        // Offsets index into the displayed (sorted) list, not the raw query.
         for index in offsets {
-            modelContext.delete(players[index])
+            modelContext.delete(sortedPlayers[index])
         }
     }
 }

@@ -37,6 +37,12 @@ struct ScoreCardApp: App {
         // UI tests pass "-uitesting" to run against a throwaway in-memory store,
         // so they start from a clean slate and never touch real or synced data.
         if ProcessInfo.processInfo.arguments.contains("-uitesting") {
+            // Adding "-seedSampleData" reuses the pre-populated in-memory store the
+            // previews use (players/teams/games with real win records). Handy for
+            // screenshots and demos; still never touches real or CloudKit data.
+            if ProcessInfo.processInfo.arguments.contains("-seedSampleData") {
+                return SampleData.container
+            }
             let testConfiguration = ModelConfiguration(
                 schema: schema,
                 isStoredInMemoryOnly: true,

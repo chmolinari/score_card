@@ -42,6 +42,11 @@ struct GameScoreboardView: View {
     @State private var scoreRevision = 0
 
     @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
+    @AppStorage(DrawDealingRule.storageKey) private var drawDealingRule: DrawDealingRule = .ask
+
+    // Shown when a hand is declared a draw and the user's preference is to be
+    // asked who deals next (the `.ask` rule).
+    @State private var showDrawDealerPrompt = false
 
     /// Running count of every competitor's score entries. Used only off the hot
     /// path (to (re)arm the per-hand baseline), never per row during a render.
@@ -159,6 +164,19 @@ struct GameScoreboardView: View {
         } message: {
             Text("\(winnerNames) reached the \(game.targetPoints ?? 0)-point target. End the game and record the result? If the score was added by mistake, choose Not Yet and undo the last score to keep playing.")
         }
+        .confirmationDialog("Hand was a draw",
+                            isPresented: $showDrawDealerPrompt,
+                            titleVisibility: .visible) {
+            Button("\(game.currentDealer?.name ?? "Same dealer") deals again") {
+                advanceHand(passDeal: false)
+            }
+            Button("Pass to \(game.nextDealer(dealingDirection)?.name ?? "next player")") {
+                advanceHand(passDeal: true)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("No one won this hand. Who deals the next one?")
+        }
         .onChange(of: reachedTarget) { _, reached in
             if reached {
                 // Only nudge once per time the target is crossed; re-arm for the
@@ -189,15 +207,27 @@ struct GameScoreboardView: View {
         try? modelContext.save()
     }
 
-    /// Pass the deal to the next player, commit the hand's scores, and re-arm
-    /// the baseline so the button disables again until the next point is scored.
-    private func advanceHand() {
+    /// Start the next hand, commit the current hand's scores, and re-arm the
+    /// baseline so the button disables again until the next point is scored.
+    /// `passDeal` moves the deal on to the next dealer; a drawn hand may keep it
+    /// with the same dealer depending on the `drawDealingRule` preference.
+    private func advanceHand(passDeal: Bool = true) {
         withAnimation {
-            game.advanceDealer(dealingDirection)
+            if passDeal { game.advanceDealer(dealingDirection) }
             game.currentHand += 1
         }
         handBaselineEntryCount = totalEntryCount
         persist()
+    }
+
+    /// Resolve who deals after a drawn hand per the user's preference: redeal
+    /// with the same dealer, pass the deal on, or ask each time.
+    private func handleDrawnHand() {
+        switch drawDealingRule {
+        case .redeal: advanceHand(passDeal: false)
+        case .passOn: advanceHand(passDeal: true)
+        case .ask: showDrawDealerPrompt = true
+        }
     }
 
     @ViewBuilder
@@ -239,10 +269,11 @@ struct GameScoreboardView: View {
                 .disabled(!canAdvance || reached)
 
                 // A drawn hand scores nothing, so "Next Hand" stays disabled.
-                // This passes the deal anyway — only meaningful before any point
-                // is scored this hand (otherwise it wasn't a draw).
+                // This starts the next hand anyway — only meaningful before any
+                // point is scored this hand (otherwise it wasn't a draw). Who
+                // deals next follows the `drawDealingRule` preference.
                 Button {
-                    advanceHand()
+                    handleDrawnHand()
                 } label: {
                     Label("Hand Was a Draw", systemImage: "equal.circle")
                         .font(.subheadline)

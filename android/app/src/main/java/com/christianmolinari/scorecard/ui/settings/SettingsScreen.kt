@@ -20,8 +20,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.QuestionMark
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.RotateLeft
 import androidx.compose.material.icons.filled.RotateRight
@@ -57,6 +60,7 @@ import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.christianmolinari.scorecard.AppContainer
 import com.christianmolinari.scorecard.domain.DealingDirection
+import com.christianmolinari.scorecard.domain.DrawDealingRule
 import com.christianmolinari.scorecard.ui.components.AppBackground
 import com.christianmolinari.scorecard.ui.components.CardTile
 import com.christianmolinari.scorecard.ui.components.GameFormatting
@@ -83,6 +87,8 @@ fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit) {
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val dealingDirection by container.prefs.dealingDirection
         .collectAsStateWithLifecycle(initialValue = DealingDirection.CounterClockwise)
+    val drawDealingRule by container.prefs.drawDealingRule
+        .collectAsStateWithLifecycle(initialValue = DrawDealingRule.Ask)
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -230,6 +236,45 @@ fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit) {
                                     modifier = Modifier.weight(1f),
                                 )
                                 RadioButton(selected = direction == dealingDirection, onClick = null)
+                            }
+                        }
+                    }
+                }
+
+                item(key = "gameplay-draw") {
+                    SettingsSection(
+                        title = "After a Draw",
+                        footer = "Who deals the next hand when a hand ends in a draw and nobody scores.",
+                    ) {
+                        DrawDealingRule.entries.forEachIndexed { index, rule ->
+                            if (index > 0) HorizontalDivider()
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(enabled = !isWorking) {
+                                        scope.launch { container.prefs.setDrawDealingRule(rule) }
+                                    }
+                                    .padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Icon(
+                                    imageVector = when (rule) {
+                                        DrawDealingRule.Redeal -> Icons.Filled.Refresh
+                                        DrawDealingRule.PassOn -> Icons.AutoMirrored.Filled.ArrowForward
+                                        DrawDealingRule.Ask -> Icons.Filled.QuestionMark
+                                    },
+                                    contentDescription = null,
+                                    tint = ThemeColors.accent,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Text(
+                                    text = rule.label,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                RadioButton(selected = rule == drawDealingRule, onClick = null)
                             }
                         }
                     }

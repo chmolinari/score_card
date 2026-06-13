@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var accountStatus: CloudAccountStatus = .checking
 
     @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
+    @AppStorage(DrawDealingRule.storageKey) private var drawDealingRule: DrawDealingRule = .ask
 
     // Backup / reset state. (Restore lives in BackupListView.)
     @State private var isWorking = false
@@ -57,10 +58,15 @@ struct SettingsView: View {
                             Label(direction.label, systemImage: direction.systemImage).tag(direction)
                         }
                     }
+                    Picker("After a draw", selection: $drawDealingRule) {
+                        ForEach(DrawDealingRule.allCases) { rule in
+                            Label(rule.label, systemImage: rule.systemImage).tag(rule)
+                        }
+                    }
                 } header: {
                     Text("Gameplay")
                 } footer: {
-                    Text("The direction the deal passes around the table after each hand.")
+                    Text("The direction the deal passes around the table after each hand, and who deals next when a hand ends in a draw.")
                 }
 
                 Section("Your Data") {

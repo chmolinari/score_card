@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.christianmolinari.scorecard.domain.CompetitorSortOrder
 import com.christianmolinari.scorecard.domain.DealingDirection
+import com.christianmolinari.scorecard.domain.DrawDealingRule
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -21,6 +22,7 @@ class Prefs(private val context: Context) {
 
     private object Keys {
         val dealingDirection = stringPreferencesKey("dealingDirection")
+        val drawDealingRule = stringPreferencesKey("drawDealingRule")
         val playersSortOrder = stringPreferencesKey("playersSortOrder")
         val teamsSortOrder = stringPreferencesKey("teamsSortOrder")
         val hasSeededGameNames = booleanPreferencesKey("hasSeededGameNames")
@@ -32,6 +34,14 @@ class Prefs(private val context: Context) {
 
     suspend fun setDealingDirection(value: DealingDirection) {
         context.dataStore.edit { prefs -> prefs[Keys.dealingDirection] = value.rawValue }
+    }
+
+    // Who deals the next hand when a hand ends in a draw.
+    val drawDealingRule: Flow<DrawDealingRule> = context.dataStore.data
+        .map { prefs -> DrawDealingRule.fromRaw(prefs[Keys.drawDealingRule]) }
+
+    suspend fun setDrawDealingRule(value: DrawDealingRule) {
+        context.dataStore.edit { prefs -> prefs[Keys.drawDealingRule] = value.rawValue }
     }
 
     // How the Players list is ordered; kept per tab, like the iOS preference.

@@ -75,6 +75,7 @@ import com.christianmolinari.scorecard.data.db.PlayerEntity
 import com.christianmolinari.scorecard.data.db.ScoreEntryEntity
 import com.christianmolinari.scorecard.data.db.SeatEntity
 import com.christianmolinari.scorecard.domain.DealingDirection
+import com.christianmolinari.scorecard.domain.DrawDealingRule
 import com.christianmolinari.scorecard.domain.advancedDealerIndex
 import com.christianmolinari.scorecard.domain.currentDealer
 import com.christianmolinari.scorecard.domain.displayName
@@ -113,6 +114,8 @@ fun ScoreboardScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) 
     val game by gameFlow.collectAsStateWithLifecycle(initialValue = null)
     val direction by container.prefs.dealingDirection
         .collectAsStateWithLifecycle(initialValue = DealingDirection.CounterClockwise)
+    val drawDealingRule by container.prefs.drawDealingRule
+        .collectAsStateWithLifecycle(initialValue = DrawDealingRule.Ask)
 
     // Total score entries the game had at the start of the current hand. "Next
     // Hand" stays disabled until at least one point is scored beyond this, then
@@ -138,6 +141,9 @@ fun ScoreboardScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) 
     var prevReachedTarget by remember { mutableStateOf<Boolean?>(null) }
 
     var showCloseConfirmation by remember { mutableStateOf(false) }
+    // Shown when a hand is declared a draw and the preference is to be asked who
+    // deals next (the Ask rule).
+    var showDrawPrompt by remember { mutableStateOf(false) }
     var showSeatingSetup by remember { mutableStateOf(false) }
     var seatingSaving by remember { mutableStateOf(false) }
 
@@ -206,18 +212,34 @@ fun ScoreboardScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) 
         }
     }
 
-    // Pass the deal to the next player, bump the hand counter, and re-arm the
-    // baseline so the button disables again until the next point is scored.
-    fun advanceHand() {
+    // Start the next hand, bump the hand counter, and re-arm the baseline so the
+    // button disables again until the next point is scored. `passDeal` moves the
+    // deal on to the next dealer; a drawn hand may keep it with the same dealer
+    // depending on the drawDealingRule preference.
+    fun advanceHand(passDeal: Boolean = true) {
         val g = current ?: return
         handBaseline = totalEntryCount
         scope.launch {
             gameDao.updateGame(
                 g.game.copy(
-                    currentDealerIndex = g.advancedDealerIndex(direction),
+                    currentDealerIndex = if (passDeal) {
+                        g.advancedDealerIndex(direction)
+                    } else {
+                        g.game.currentDealerIndex
+                    },
                     currentHand = g.game.currentHand + 1,
                 )
             )
+        }
+    }
+
+    // Resolve who deals after a drawn hand per the user's preference: redeal with
+    // the same dealer, pass the deal on, or ask each time.
+    fun handleDrawnHand() {
+        when (drawDealingRule) {
+            DrawDealingRule.Redeal -> advanceHand(passDeal = false)
+            DrawDealingRule.PassOn -> advanceHand(passDeal = true)
+            DrawDealingRule.Ask -> showDrawPrompt = true
         }
     }
 
@@ -276,6 +298,7 @@ fun ScoreboardScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) 
                             canAdvance = scoredThisHand,
                             reached = reachedTarget,
                             onAdvance = { advanceHand() },
+                            onDraw = { handleDrawnHand() },
                             onSetUpSeating = { showSeatingSetup = true },
                         )
                     }
@@ -325,6 +348,35 @@ fun ScoreboardScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) 
             dismissButton = {
                 TextButton(onClick = { showCloseConfirmation = false }) {
                     Text("Keep Playing")
+                }
+            },
+        )
+    }
+
+    // Shown when a hand is declared a draw and the preference is to be asked who
+    // deals next. Either choice starts the next hand; dismissing (tap outside or
+    // back) cancels and leaves the current hand in place.
+    if (showDrawPrompt) {
+        val sameDealer = current?.currentDealer?.name ?: "Same dealer"
+        val nextToDeal = current?.nextDealer(direction)?.name ?: "next player"
+        AlertDialog(
+            onDismissRequest = { showDrawPrompt = false },
+            title = { Text("Hand was a draw") },
+            text = { Text("No one won this hand. Who deals the next one?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDrawPrompt = false
+                    advanceHand(passDeal = true)
+                }) {
+                    Text("Pass to $nextToDeal")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDrawPrompt = false
+                    advanceHand(passDeal = false)
+                }) {
+                    Text("$sameDealer deals again")
                 }
             },
         )
@@ -499,6 +551,7 @@ private fun DealerCard(
     canAdvance: Boolean,
     reached: Boolean,
     onAdvance: () -> Unit,
+    onDraw: () -> Unit,
     onSetUpSeating: () -> Unit,
 ) {
     val dealer = game.currentDealer
@@ -554,10 +607,11 @@ private fun DealerCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             // A drawn hand scores nothing, so "Next Hand" stays disabled. This
-            // passes the deal anyway — only meaningful before any point is
-            // scored this hand (otherwise it wasn't a draw).
+            // starts the next hand anyway — only meaningful before any point is
+            // scored this hand (otherwise it wasn't a draw). Who deals next
+            // follows the drawDealingRule preference.
             OutlinedButton(
-                onClick = onAdvance,
+                onClick = onDraw,
                 enabled = !canAdvance && !reached,
                 modifier = Modifier.fillMaxWidth(),
             ) {

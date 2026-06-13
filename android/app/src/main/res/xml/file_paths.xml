@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Backups live in getExternalFilesDir(null)/Backups (BackupStorage). -->
+    <external-files-path name="backups" path="Backups/" />
+    <!-- Fallback location when external storage is unavailable. -->
+    <files-path name="local_backups" path="Backups/" />
+</paths>

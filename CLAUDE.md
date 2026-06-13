@@ -8,7 +8,7 @@ ScoreCard is an app for keeping the score of card games (Scopa, Briscola, etc.).
 
 ```
 ios/        # iOS app (SwiftUI + SwiftData + CloudKit) — see ios/CLAUDE.md
-android/    # Android app (planned: Kotlin + Jetpack Compose) — does not exist yet
+android/    # Android app (Kotlin + Jetpack Compose + Room) — see android/CLAUDE.md
 docs/       # platform-neutral docs: specs, release notes, cross-platform contracts
 ```
 

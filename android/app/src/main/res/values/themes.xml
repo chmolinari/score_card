@@ -1,0 +1,4 @@
+<resources>
+    <!-- Compose draws everything; this only styles the window before setContent. -->
+    <style name="Theme.ScoreCard" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

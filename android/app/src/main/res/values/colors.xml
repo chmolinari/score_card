@@ -1,0 +1,4 @@
+<resources>
+    <!-- Launcher icon background: the brand coral (Theme.coral, light variant). -->
+    <color name="ic_launcher_background">#FF6B6B</color>
+</resources>

@@ -12,3 +12,11 @@ DerivedData/
 # Swift Package Manager
 .swiftpm/
 .build/
+
+# Android / Gradle
+.gradle/
+local.properties
+*.apk
+*.aab
+.cxx/
+captures/

@@ -1,0 +1,773 @@
+//
+//  ScoreCardTests.swift
+//  ScoreCardTests
+//
+//  Domain-logic tests covering the scorekeeping requirements: players, teams,
+//  games (with and without a target), scoring, undo, ranking, and history.
+//
+
+import Testing
+import SwiftData
+import Foundation
+@testable import ScoreCard
+
+// Serialized: each test builds its own SwiftData container, and running them in
+// parallel races on store setup in the shared test host.
+@MainActor
+@Suite(.serialized)
+struct ScoreCardTests {
+
+    /// A fresh in-memory container so each test starts from a clean store and
+    /// never touches CloudKit or on-disk data.
+    ///
+    /// Callers MUST keep the returned container alive for the duration of the
+    /// test (bind it to a local `let`). A `ModelContext` does not keep its
+    /// container from deallocating, and using a context after its container is
+    /// gone traps inside SwiftData.
+    private func makeContainer() throws -> ModelContainer {
+        let schema = Schema(ScoreCardSchema.models)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, configurations: [config])
+    }
+
+    private func addPoints(_ points: Int, to participant: GameParticipant, in context: ModelContext) {
+        let entry = ScoreEntry(points: points)
+        entry.participant = participant
+        context.insert(entry)
+    }
+
+    // MARK: Requirements 1 & 2 — players and teams
+
+    @Test func playersAndTeamsRelate() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+
+        let team = Team(name: "The Aces", members: [alice, bob])
+        context.insert(team)
+        try context.save()
+
+        #expect(team.sortedMembers.count == 2)
+        // Inverse relationship is maintained automatically by SwiftData.
+        #expect(alice.sortedTeams.first?.name == "The Aces")
+        #expect(team.rosterSummary == "Alice & Bob")
+    }
+
+    // MARK: Requirement 3 — games with and without a target
+
+    @Test func openEndedGameHasNoTarget() throws {
+        let game = Game(title: "Briscola")
+        #expect(game.hasTarget == false)
+        #expect(game.targetPoints == nil)
+        #expect(game.isOpen)
+    }
+
+    @Test func targetGameKeepsTarget() throws {
+        let game = Game(title: "Scopa", hasTarget: true, targetPoints: 11)
+        #expect(game.hasTarget)
+        #expect(game.targetPoints == 11)
+    }
+
+    @Test func targetIsClearedWhenDisabled() throws {
+        // Passing a target while hasTarget is false must not retain it.
+        let game = Game(title: "Briscola", hasTarget: false, targetPoints: 11)
+        #expect(game.targetPoints == nil)
+    }
+
+    // MARK: Requirement 4 — adding points to players and teams
+
+    @Test func scoringAccumulatesAndRanks() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+
+        let game = Game(title: "Scopa", hasTarget: true, targetPoints: 11)
+        context.insert(game)
+        let pa = GameParticipant(player: alice, sortIndex: 0)
+        let pb = GameParticipant(player: bob, sortIndex: 1)
+        pa.game = game
+        pb.game = game
+        [pa, pb].forEach(context.insert)
+
+        addPoints(3, to: pa, in: context)
+        addPoints(5, to: pa, in: context)
+        addPoints(4, to: pb, in: context)
+        try context.save()
+
+        #expect(pa.totalScore == 8)
+        #expect(pb.totalScore == 4)
+        // Ranking is highest-first.
+        #expect(game.rankedParticipants.first?.displayName == "Alice")
+        #expect(game.leader?.displayName == "Alice")
+    }
+
+    @Test func undoRemovesLastEntry() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        context.insert(alice)
+        let game = Game(title: "Briscola")
+        context.insert(game)
+        let pa = GameParticipant(player: alice, sortIndex: 0)
+        pa.game = game
+        context.insert(pa)
+
+        addPoints(10, to: pa, in: context)
+        addPoints(5, to: pa, in: context)
+        try context.save()
+        #expect(pa.totalScore == 15)
+
+        // Undo = delete the most recent entry.
+        let newest = pa.sortedEntries.first!
+        context.delete(newest)
+        try context.save()
+        #expect(pa.totalScore == 10)
+    }
+
+    @Test func targetDetection() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let team = Team(name: "Aces")
+        context.insert(team)
+        let game = Game(title: "Scopa", hasTarget: true, targetPoints: 11)
+        context.insert(game)
+        let p = GameParticipant(team: team, sortIndex: 0)
+        p.game = game
+        context.insert(p)
+
+        addPoints(7, to: p, in: context)
+        #expect(game.winnersAtTarget.isEmpty)
+        addPoints(5, to: p, in: context)  // now 12 >= 11
+        #expect(game.winnersAtTarget.map(\.displayName) == ["Aces"])
+    }
+
+    // MARK: Requirements 5 & 6 — open/close and history
+
+    @Test func closingGameMovesItToHistory() throws {
+        let game = Game(title: "Scopa", hasTarget: true, targetPoints: 11)
+        #expect(game.isOpen)
+        game.closedAt = .now
+        #expect(game.isOpen == false)
+    }
+
+    // MARK: Requirement 7 — date/time and geolocation tagging
+
+    @Test func gameIsStampedWithDateAndLocation() throws {
+        let game = Game(title: "Scopa")
+        // Date/time is stamped at creation.
+        #expect(game.createdAt.timeIntervalSinceNow < 1)
+
+        let location = CapturedLocation(latitude: 40.8518, longitude: 14.2681, placeName: "Napoli, Italy")
+        game.apply(location: location)
+        #expect(game.latitude == 40.8518)
+        #expect(game.longitude == 14.2681)
+        #expect(game.locationName == "Napoli, Italy")
+        #expect(game.coordinate != nil)
+    }
+
+    // MARK: Tally — win/play record per player and team
+
+    @Test func tallyCountsWinsPlaysAndInProgress() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+
+        // Finished game 1: Alice beats Bob.
+        let g1 = Game(title: "Scopa")
+        context.insert(g1)
+        let g1a = GameParticipant(player: alice, sortIndex: 0); g1a.game = g1; context.insert(g1a)
+        let g1b = GameParticipant(player: bob, sortIndex: 1); g1b.game = g1; context.insert(g1b)
+        addPoints(11, to: g1a, in: context)
+        addPoints(7, to: g1b, in: context)
+        g1.closedAt = .now
+
+        // Finished game 2: Bob beats Alice.
+        let g2 = Game(title: "Briscola")
+        context.insert(g2)
+        let g2a = GameParticipant(player: alice, sortIndex: 0); g2a.game = g2; context.insert(g2a)
+        let g2b = GameParticipant(player: bob, sortIndex: 1); g2b.game = g2; context.insert(g2b)
+        addPoints(40, to: g2a, in: context)
+        addPoints(81, to: g2b, in: context)
+        g2.closedAt = .now
+
+        // Open game: counts only as in-progress for both.
+        let g3 = Game(title: "Open one")
+        context.insert(g3)
+        let g3a = GameParticipant(player: alice, sortIndex: 0); g3a.game = g3; context.insert(g3a)
+        let g3b = GameParticipant(player: bob, sortIndex: 1); g3b.game = g3; context.insert(g3b)
+        try context.save()
+
+        #expect(alice.tally.played == 2)
+        #expect(alice.tally.won == 1)
+        #expect(alice.tally.inProgress == 1)
+        #expect(alice.tally.winPercentage == 50)
+
+        #expect(bob.tally.played == 2)
+        #expect(bob.tally.won == 1)
+        #expect(bob.tally.inProgress == 1)
+    }
+
+    @Test func tallyCountsTiesAsDrawForBoth() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let red = Team(name: "Red")
+        let blue = Team(name: "Blue")
+        [red, blue].forEach(context.insert)
+
+        let game = Game(title: "Tie")
+        context.insert(game)
+        let r = GameParticipant(team: red, sortIndex: 0); r.game = game; context.insert(r)
+        let b = GameParticipant(team: blue, sortIndex: 1); b.game = game; context.insert(b)
+        addPoints(10, to: r, in: context)
+        addPoints(10, to: b, in: context)
+        game.closedAt = .now
+        try context.save()
+
+        // A shared top score is a draw, not a win, for everyone tied.
+        #expect(game.isDraw)
+        #expect(red.tally.won == 0)
+        #expect(red.tally.drawn == 1)
+        #expect(red.tally.played == 1)
+        #expect(blue.tally.won == 0)
+        #expect(blue.tally.drawn == 1)
+    }
+
+    @Test func drawOnlyCountsForTiedTopScorers() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let a = Player(name: "A")
+        let b = Player(name: "B")
+        let c = Player(name: "C")
+        [a, b, c].forEach(context.insert)
+
+        // A and B tie for the top at 10; C trails at 4.
+        let game = Game(title: "Three-way")
+        context.insert(game)
+        let pa = GameParticipant(player: a, sortIndex: 0); pa.game = game; context.insert(pa)
+        let pb = GameParticipant(player: b, sortIndex: 1); pb.game = game; context.insert(pb)
+        let pc = GameParticipant(player: c, sortIndex: 2); pc.game = game; context.insert(pc)
+        addPoints(10, to: pa, in: context)
+        addPoints(10, to: pb, in: context)
+        addPoints(4, to: pc, in: context)
+        game.closedAt = .now
+        try context.save()
+
+        #expect(game.isDraw)
+        // The two leaders drew; the trailing player neither won nor drew.
+        #expect(a.tally.drawn == 1)
+        #expect(b.tally.drawn == 1)
+        #expect(c.tally.drawn == 0)
+        #expect(c.tally.won == 0)
+        #expect(c.tally.played == 1)
+    }
+
+    @Test func emptyTallyForNewPlayer() throws {
+        let player = Player(name: "Newbie")
+        #expect(player.tally.isEmpty)
+        #expect(player.tally.winPercentage == nil)
+    }
+
+    // MARK: Most-used ranking for the New Game selector
+
+    @Test func frequentPickerRanksByUsageThenName() throws {
+        struct Item { let name: String; let usage: Int }
+        let items = [
+            Item(name: "Zoe", usage: 5),
+            Item(name: "Amy", usage: 5),   // ties with Zoe → name breaks tie
+            Item(name: "Bob", usage: 9),
+            Item(name: "Cal", usage: 0),   // unused → excluded
+            Item(name: "Dan", usage: 1),
+            Item(name: "Eve", usage: 2),
+            Item(name: "Fox", usage: 3),
+        ]
+        let top = FrequentPicker.top(items, limit: 5, usage: { $0.usage }, name: { $0.name })
+
+        #expect(top.map(\.name) == ["Bob", "Amy", "Zoe", "Fox", "Eve"])
+        #expect(top.count == 5)               // capped at the limit
+        #expect(!top.contains { $0.name == "Cal" })  // zero-usage excluded
+    }
+
+    // MARK: Players/Teams list ordering
+
+    /// A stand-in for a player or team: the sorter only needs a name and a tally.
+    private struct SortableCompetitor {
+        let name: String
+        let tally: Tally
+    }
+
+    @Test func competitorSorterOrdersByNameInBothDirections() {
+        let items = [
+            SortableCompetitor(name: "Bob", tally: Tally()),
+            SortableCompetitor(name: "alice", tally: Tally()),      // lower-case sorts with "A"
+            SortableCompetitor(name: "Player 10", tally: Tally()),
+            SortableCompetitor(name: "Player 2", tally: Tally()),   // numeric-aware: 2 before 10
+        ]
+
+        let ascending = CompetitorSorter.sorted(items, by: .nameAscending,
+                                                name: { $0.name }, tally: { $0.tally })
+        #expect(ascending.map(\.name) == ["alice", "Bob", "Player 2", "Player 10"])
+
+        let descending = CompetitorSorter.sorted(items, by: .nameDescending,
+                                                 name: { $0.name }, tally: { $0.tally })
+        #expect(descending.map(\.name) == ["Player 10", "Player 2", "Bob", "alice"])
+    }
+
+    @Test func competitorSorterRanksByWinsThenWinPercentThenName() {
+        let items = [
+            SortableCompetitor(name: "Cara", tally: Tally(played: 4, won: 2)),   // 2 wins, 50%
+            SortableCompetitor(name: "Abe",  tally: Tally(played: 10, won: 5)),  // 5 wins
+            SortableCompetitor(name: "Bea",  tally: Tally(played: 2, won: 2)),   // 2 wins, 100%
+            SortableCompetitor(name: "Dan",  tally: Tally(played: 4, won: 2)),   // ties Cara → name breaks it
+            SortableCompetitor(name: "Eve",  tally: Tally()),                    // no games → last
+        ]
+
+        let descending = CompetitorSorter.sorted(items, by: .scoreDescending,
+                                                 name: { $0.name }, tally: { $0.tally })
+        // Most wins first; within the 2-win group, higher win% first (Bea 100%
+        // before the 50% pair), the 50% pair alphabetical; no-games last.
+        #expect(descending.map(\.name) == ["Abe", "Bea", "Cara", "Dan", "Eve"])
+
+        let ascending = CompetitorSorter.sorted(items, by: .scoreAscending,
+                                                name: { $0.name }, tally: { $0.tally })
+        // Fewest wins first (no-games has zero wins → first), then lower win%.
+        #expect(ascending.map(\.name) == ["Eve", "Cara", "Dan", "Bea", "Abe"])
+    }
+
+    @Test func competitorSorterRanksUnplayedBelowAnAllLossRecord() {
+        let items = [
+            SortableCompetitor(name: "Ghost", tally: Tally()),                    // never played → nil %
+            SortableCompetitor(name: "Loser", tally: Tally(played: 3, won: 0)),   // played, 0%
+        ]
+        let descending = CompetitorSorter.sorted(items, by: .scoreDescending,
+                                                 name: { $0.name }, tally: { $0.tally })
+        // Both have zero wins, but a real 0% record outranks "no games yet".
+        #expect(descending.map(\.name) == ["Loser", "Ghost"])
+    }
+
+    @Test func usageCountReflectsParticipations() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        context.insert(alice)
+        #expect(alice.usageCount == 0)
+
+        for title in ["G1", "G2", "G3"] {
+            let game = Game(title: title)
+            context.insert(game)
+            let p = GameParticipant(player: alice, sortIndex: 0)
+            p.game = game
+            context.insert(p)
+        }
+        try context.save()
+        #expect(alice.usageCount == 3)
+    }
+
+    // MARK: Backup / restore / reset
+
+    @Test func eraseAllRemovesEverything() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        context.insert(alice)
+        let team = Team(name: "Aces", members: [alice])
+        context.insert(team)
+        let game = Game(title: "Scopa")
+        context.insert(game)
+        let p = GameParticipant(team: team, sortIndex: 0); p.game = game; context.insert(p)
+        addPoints(5, to: p, in: context)
+        try context.save()
+
+        try BackupService.eraseAll(in: context)
+
+        #expect(try context.fetch(FetchDescriptor<Player>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<Team>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<Game>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<GameParticipant>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<ScoreEntry>()).isEmpty)
+    }
+
+    @Test func backupRoundTripRebuildsData() throws {
+        // Build a representative store.
+        let sourceContainer = try makeContainer()
+        let source = sourceContainer.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(source.insert)
+        let aces = Team(name: "Aces", members: [alice, bob])
+        source.insert(aces)
+
+        let scopa = Game(title: "Scopa", hasTarget: true, targetPoints: 11)
+        scopa.locationName = "Napoli, Italy"
+        scopa.latitude = 40.8518
+        scopa.longitude = 14.2681
+        source.insert(scopa)
+        let teamSide = GameParticipant(team: aces, sortIndex: 0); teamSide.game = scopa; source.insert(teamSide)
+        let soloSide = GameParticipant(player: alice, sortIndex: 1); soloSide.game = scopa; source.insert(soloSide)
+        addPoints(11, to: teamSide, in: source)
+        addPoints(4, to: soloSide, in: source)
+        addPoints(3, to: soloSide, in: source)
+        scopa.closedAt = .now
+        try source.save()
+
+        // Export from the source store.
+        let data = try BackupService.exportData(from: source)
+
+        // Restore into a fresh, separate store.
+        let destContainer = try makeContainer()
+        let dest = destContainer.mainContext
+        let snapshot = try BackupService.decodeSnapshot(data)
+        try BackupService.restore(snapshot, into: dest)
+
+        let players = try dest.fetch(FetchDescriptor<Player>(sortBy: [SortDescriptor(\.name)]))
+        let teams = try dest.fetch(FetchDescriptor<Team>())
+        let games = try dest.fetch(FetchDescriptor<Game>())
+
+        #expect(players.map(\.name) == ["Alice", "Bob"])
+        #expect(teams.first?.sortedMembers.map(\.name) == ["Alice", "Bob"])
+        #expect(games.count == 1)
+
+        let restored = try #require(games.first)
+        #expect(restored.title == "Scopa")
+        #expect(restored.targetPoints == 11)
+        #expect(restored.locationName == "Napoli, Italy")
+        #expect(restored.isOpen == false)
+
+        let ranked = restored.rankedParticipants
+        #expect(ranked.count == 2)
+        #expect(ranked.first?.displayName == "Aces")
+        #expect(ranked.first?.totalScore == 11)
+        #expect(ranked.last?.totalScore == 7)   // 4 + 3
+        // The team participant is relinked to the restored team.
+        #expect(ranked.first?.isTeam == true)
+    }
+
+    @Test func restoreReplacesExistingData() throws {
+        // Source has one player.
+        let sourceContainer = try makeContainer()
+        let source = sourceContainer.mainContext
+        source.insert(Player(name: "OnlyInBackup"))
+        try source.save()
+        let data = try BackupService.exportData(from: source)
+
+        // Destination already has different data that must be wiped.
+        let destContainer = try makeContainer()
+        let dest = destContainer.mainContext
+        dest.insert(Player(name: "Stale1"))
+        dest.insert(Player(name: "Stale2"))
+        try dest.save()
+
+        try BackupService.restore(BackupService.decodeSnapshot(data), into: dest)
+
+        let names = try dest.fetch(FetchDescriptor<Player>()).map(\.name)
+        #expect(names == ["OnlyInBackup"])
+    }
+
+    @Test func decodingRejectsNonBackupData() throws {
+        let garbage = Data("not a backup".utf8)
+        #expect(throws: BackupError.self) {
+            _ = try BackupService.decodeSnapshot(garbage)
+        }
+    }
+
+    // MARK: Dealer / seating
+
+    @Test func dealerRotatesCounterClockwiseAndWraps() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        var players: [Player] = []
+        for name in ["A", "B", "C", "D"] {
+            let player = Player(name: name); context.insert(player); players.append(player)
+        }
+        let game = Game(title: "Briscola"); context.insert(game)
+        for (position, player) in players.enumerated() {
+            let seat = Seat(player: player, position: position); seat.game = game; context.insert(seat)
+        }
+        game.currentDealerIndex = 0
+        try context.save()
+
+        #expect(game.currentDealer?.name == "A")
+        #expect(game.nextDealer(.counterClockwise)?.name == "B")
+        game.advanceDealer(.counterClockwise)
+        #expect(game.currentDealer?.name == "B")
+        game.advanceDealer(.counterClockwise); game.advanceDealer(.counterClockwise)
+        #expect(game.currentDealer?.name == "D")
+        game.advanceDealer(.counterClockwise)      // wraps around the table
+        #expect(game.currentDealer?.name == "A")
+    }
+
+    @Test func dealerRotatesClockwiseAndWraps() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        var players: [Player] = []
+        for name in ["A", "B", "C", "D"] {
+            let player = Player(name: name); context.insert(player); players.append(player)
+        }
+        let game = Game(title: "Scopa"); context.insert(game)
+        for (position, player) in players.enumerated() {
+            let seat = Seat(player: player, position: position); seat.game = game; context.insert(seat)
+        }
+        game.currentDealerIndex = 0
+        try context.save()
+
+        #expect(game.currentDealer?.name == "A")
+        #expect(game.nextDealer(.clockwise)?.name == "D")   // clockwise = previous seat
+        game.advanceDealer(.clockwise)                       // wraps backwards
+        #expect(game.currentDealer?.name == "D")
+        game.advanceDealer(.clockwise)
+        #expect(game.currentDealer?.name == "C")
+    }
+
+    @Test func gameWithoutSeatingHasNoDealer() throws {
+        let game = Game(title: "Scopa")
+        #expect(game.hasSeating == false)
+        #expect(game.currentDealer == nil)
+    }
+
+    // MARK: Scoreboard order follows the dealing rotation, not the score
+
+    @Test func participantsOrderByDealingRotation() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        var players: [Player] = []
+        for name in ["A", "B", "C", "D"] {
+            let player = Player(name: name); context.insert(player); players.append(player)
+        }
+        let game = Game(title: "Briscola"); context.insert(game)
+        var parts: [GameParticipant] = []
+        for (i, player) in players.enumerated() {
+            let p = GameParticipant(player: player, sortIndex: i); p.game = game; context.insert(p)
+            parts.append(p)
+        }
+        for (position, player) in players.enumerated() {
+            let seat = Seat(player: player, position: position); seat.game = game; context.insert(seat)
+        }
+        game.currentDealerIndex = 0
+        try context.save()
+
+        // Give the trailing seat the highest score to prove order ignores it.
+        addPoints(99, to: parts[3], in: context)
+
+        // Counter-clockwise keeps the seat order: first dealer (A) on top.
+        #expect(game.participantsInDealingOrder(.counterClockwise).map(\.displayName) == ["A", "B", "C", "D"])
+        // Clockwise: first dealer still on top, the rest follow the deal backwards.
+        #expect(game.participantsInDealingOrder(.clockwise).map(\.displayName) == ["A", "D", "C", "B"])
+    }
+
+    @Test func teamsOrderByEarliestDealingMember() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        var players: [Player] = []
+        for name in ["A", "B", "C", "D"] {
+            let player = Player(name: name); context.insert(player); players.append(player)
+        }
+        // Two teams; B (seat 1) is the first of Reds to deal, A (seat 0) for Blues.
+        let blues = Team(name: "Blues", members: [players[0], players[2]])  // A, C
+        let reds = Team(name: "Reds", members: [players[1], players[3]])     // B, D
+        [blues, reds].forEach(context.insert)
+        let game = Game(title: "Tressette"); context.insert(game)
+        let pBlues = GameParticipant(team: blues, sortIndex: 0); pBlues.game = game
+        let pReds = GameParticipant(team: reds, sortIndex: 1); pReds.game = game
+        [pBlues, pReds].forEach(context.insert)
+        for (position, player) in players.enumerated() {
+            let seat = Seat(player: player, position: position); seat.game = game; context.insert(seat)
+        }
+        game.currentDealerIndex = 0
+        try context.save()
+
+        // First dealer is A (Blues), so Blues is on top counter-clockwise.
+        #expect(game.participantsInDealingOrder(.counterClockwise).map(\.displayName) == ["Blues", "Reds"])
+        // Clockwise the deal goes A → D(Reds) next, so Reds' earliest member (D)
+        // outranks Blues' next member (C): the team with A still leads, though.
+        #expect(game.participantsInDealingOrder(.clockwise).map(\.displayName) == ["Blues", "Reds"])
+    }
+
+    @Test func dealingOrderFallsBackToAddedOrderWithoutSeating() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice"); let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+        let game = Game(title: "Briscola"); context.insert(game)
+        let pa = GameParticipant(player: alice, sortIndex: 0); pa.game = game
+        let pb = GameParticipant(player: bob, sortIndex: 1); pb.game = game
+        [pa, pb].forEach(context.insert)
+        addPoints(50, to: pb, in: context)  // higher score must not reorder
+        try context.save()
+
+        #expect(game.participantsInDealingOrder(.counterClockwise).map(\.displayName) == ["Alice", "Bob"])
+    }
+
+    @Test func draftExpandsTeamsToPeopleAndDedupes() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        let carol = Player(name: "Carol")
+        [alice, bob, carol].forEach(context.insert)
+        let team = Team(name: "Aces", members: [alice, bob])
+        context.insert(team)
+        try context.save()
+
+        // Team + a solo entry for Alice (already on the team) + solo Carol.
+        let draft = GameDraft(title: "G", hasTarget: false, targetPoints: nil,
+                              competitors: [.team(team), .player(alice), .player(carol)])
+        #expect(draft.people.map(\.name) == ["Alice", "Bob", "Carol"])
+    }
+
+    @Test func backupPreservesSeatsAndDealer() throws {
+        let sourceContainer = try makeContainer()
+        let source = sourceContainer.mainContext
+        var players: [Player] = []
+        for name in ["A", "B", "C"] {
+            let player = Player(name: name); source.insert(player); players.append(player)
+        }
+        let game = Game(title: "Tressette"); source.insert(game)
+        let participant = GameParticipant(player: players[0], sortIndex: 0)
+        participant.game = game; source.insert(participant)
+        for (position, player) in players.enumerated() {
+            let seat = Seat(player: player, position: position); seat.game = game; source.insert(seat)
+        }
+        game.currentDealerIndex = 1
+        try source.save()
+
+        let data = try BackupService.exportData(from: source)
+        let destContainer = try makeContainer()
+        let dest = destContainer.mainContext
+        try BackupService.restore(BackupService.decodeSnapshot(data), into: dest)
+
+        let restored = try #require(try dest.fetch(FetchDescriptor<Game>()).first)
+        #expect(restored.orderedSeats.map { $0.player?.name } == ["A", "B", "C"])
+        #expect(restored.currentDealerIndex == 1)
+        #expect(restored.currentDealer?.name == "B")
+    }
+
+    @Test func historySurvivesPlayerDeletion() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        context.insert(alice)
+        let game = Game(title: "Briscola")
+        context.insert(game)
+        let pa = GameParticipant(player: alice, sortIndex: 0)
+        pa.game = game
+        context.insert(pa)
+        try context.save()
+
+        // Deleting the player nullifies the link but keeps the snapshot name.
+        context.delete(alice)
+        try context.save()
+        #expect(pa.player == nil)
+        #expect(pa.displayName == "Alice")
+    }
+
+    // MARK: Editable game-name list + last-used default
+
+    @Test func gameNameDefaults() throws {
+        let gameName = GameName(name: "Scopa")
+        #expect(gameName.name == "Scopa")
+        #expect(gameName.lastUsedAt == .distantPast)   // never used yet
+    }
+
+    /// The default pre-selection is the most recently used name; never-used names
+    /// (all sharing `.distantPast`) and ties fall back to alphabetical order.
+    @Test func defaultSelectionPicksMostRecentlyUsed() {
+        let scopa = GameName(name: "Scopa", lastUsedAt: Date(timeIntervalSince1970: 100))
+        let briscola = GameName(name: "Briscola", lastUsedAt: Date(timeIntervalSince1970: 500))
+        let tresette = GameName(name: "Tresette")   // never used
+
+        let pick = GameNamePicker.defaultSelection([scopa, briscola, tresette],
+                                                   lastUsed: { $0.lastUsedAt },
+                                                   name: { $0.name })
+        #expect(pick?.name == "Briscola")
+
+        // All unused → alphabetical.
+        let a = GameName(name: "Zilch"), b = GameName(name: "Alpha")
+        let tiePick = GameNamePicker.defaultSelection([a, b],
+                                                      lastUsed: { $0.lastUsedAt },
+                                                      name: { $0.name })
+        #expect(tiePick?.name == "Alpha")
+
+        #expect(GameNamePicker.defaultSelection([] as [GameName],
+                                                lastUsed: { $0.lastUsedAt },
+                                                name: { $0.name }) == nil)
+    }
+
+    /// Seeding mines distinct titles from existing games (case-insensitively),
+    /// stamping each name with the most recent matching game's creation date.
+    @Test func seedingBuildsDistinctNamesFromGames() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let older = Game(title: "scopa")        // same name, different case + older
+        older.createdAt = Date(timeIntervalSince1970: 100)
+        let newer = Game(title: "Scopa")        // most recent spelling wins
+        newer.createdAt = Date(timeIntervalSince1970: 900)
+        let briscola = Game(title: "Briscola")
+        briscola.createdAt = Date(timeIntervalSince1970: 300)
+        [older, newer, briscola].forEach(context.insert)
+        try context.save()
+
+        GameName.seedFromExistingGames(context: context)
+
+        let names = try context.fetch(FetchDescriptor<GameName>(sortBy: [SortDescriptor(\.name)]))
+        #expect(names.map(\.name) == ["Briscola", "Scopa"])   // de-duped, newest spelling
+        let scopa = try #require(names.first { $0.name == "Scopa" })
+        #expect(scopa.lastUsedAt == Date(timeIntervalSince1970: 900))   // latest matching game
+    }
+
+    @Test func seedingIsSkippedWhenNamesAlreadyExist() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        context.insert(GameName(name: "Existing"))
+        let game = Game(title: "Scopa")
+        context.insert(game)
+        try context.save()
+
+        GameName.seedFromExistingGames(context: context)
+
+        let names = try context.fetch(FetchDescriptor<GameName>())
+        #expect(names.map(\.name) == ["Existing"])   // untouched; no game mined
+    }
+
+    /// A game name is just a template: deleting it must not affect games that
+    /// already copied their title from it.
+    @Test func deletingGameNameLeavesGamesUntouched() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let gameName = GameName(name: "Scopa")
+        let game = Game(title: "Scopa")
+        context.insert(gameName)
+        context.insert(game)
+        try context.save()
+
+        context.delete(gameName)
+        try context.save()
+
+        let games = try context.fetch(FetchDescriptor<Game>())
+        #expect(games.map(\.title) == ["Scopa"])
+        #expect(try context.fetch(FetchDescriptor<GameName>()).isEmpty)
+    }
+
+    @Test func backupRoundTripIncludesGameNames() throws {
+        let sourceContainer = try makeContainer()
+        let source = sourceContainer.mainContext
+        source.insert(GameName(name: "Scopa", lastUsedAt: Date(timeIntervalSince1970: 700)))
+        source.insert(GameName(name: "Briscola"))
+        try source.save()
+
+        let data = try BackupService.exportData(from: source)
+        let destContainer = try makeContainer()
+        let dest = destContainer.mainContext
+        try BackupService.restore(BackupService.decodeSnapshot(data), into: dest)
+
+        let restored = try dest.fetch(FetchDescriptor<GameName>(sortBy: [SortDescriptor(\.name)]))
+        #expect(restored.map(\.name) == ["Briscola", "Scopa"])
+        let scopa = try #require(restored.first { $0.name == "Scopa" })
+        #expect(scopa.lastUsedAt == Date(timeIntervalSince1970: 700))
+    }
+}

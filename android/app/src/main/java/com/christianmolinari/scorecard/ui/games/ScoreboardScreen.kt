@@ -51,10 +51,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -102,7 +102,27 @@ import kotlinx.coroutines.launch
 private data class ScoreboardRowData(
     val participant: ParticipantWithDetails,
     val score: Int,
-    val entryCount: Int,
+)
+
+// Marks the "not yet armed" (null) per-hand baseline so it survives rotation /
+// process death distinctly from an armed-but-empty map. No real participant id
+// collides with it (Room row ids are positive, auto-generated).
+private const val BaselineNotArmed = Long.MIN_VALUE
+
+// Persists the per-hand baseline map (participant id -> score at hand start)
+// across configuration changes. Encoded as a flat [id, score, id, score, …]
+// list of longs; a lone sentinel element means "not yet armed".
+private val HandBaselineSaver = listSaver<Map<Long, Int>?, Long>(
+    save = { baseline ->
+        baseline?.flatMap { (id, score) -> listOf(id, score.toLong()) } ?: listOf(BaselineNotArmed)
+    },
+    restore = { stored ->
+        if (stored.size == 1 && stored[0] == BaselineNotArmed) {
+            null
+        } else {
+            stored.chunked(2).associate { (id, score) -> id to score.toInt() }
+        }
+    },
 )
 
 @Composable
@@ -117,13 +137,17 @@ fun ScoreboardScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) 
     val drawDealingRule by container.prefs.drawDealingRule
         .collectAsStateWithLifecycle(initialValue = DrawDealingRule.Ask)
 
-    // Total score entries the game had at the start of the current hand. "Next
-    // Hand" stays disabled until at least one point is scored beyond this, then
-    // is reset back to the current total when the hand is advanced — so it's
-    // immediately disabled again until the next score lands. -1 means "not yet
-    // armed": it is set exactly once, from the first non-null game emission, so
-    // entries persisted in earlier sessions don't count as scored this hand.
-    var handBaseline by rememberSaveable { mutableIntStateOf(-1) }
+    // Each competitor's total score at the start of the current hand, keyed by
+    // participant id. "Next Hand" stays disabled until some competitor's score
+    // differs from this baseline — i.e. the hand actually changed the score, not
+    // merely added entries that cancel back out — then is re-snapshotted when the
+    // hand advances. null means "not yet armed": it is set exactly once, from the
+    // first non-null game emission, so scores carried over from earlier sessions
+    // don't count as scored this hand. A hand that leaves every score where it
+    // started can only be resolved as a draw.
+    var handBaselineScores by rememberSaveable(stateSaver = HandBaselineSaver) {
+        mutableStateOf<Map<Long, Int>?>(null)
+    }
 
     // Set when the user declines the end-of-game prompt; keeps the board
     // locked (and the prompt quiet) until the over-target score is corrected
@@ -159,14 +183,20 @@ fun ScoreboardScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) 
     // flow re-emits after every insert, so no manual invalidation is needed.)
     val current = game
     val rows = current?.participantsInDealingOrder(direction)?.map { participant ->
-        val entries = participant.entries
-        ScoreboardRowData(participant, entries.sumOf { it.points }, entries.size)
+        ScoreboardRowData(participant, participant.entries.sumOf { it.points })
     } ?: emptyList()
     val target = if (current?.game?.hasTarget == true) current.game.targetPoints else null
     val reachedTarget = target != null && rows.any { it.score >= target }
-    val totalEntryCount = rows.sumOf { it.entryCount }
-    // A point scored this hand closes the quick-add buttons and arms Next Hand.
-    val scoredThisHand = handBaseline >= 0 && totalEntryCount > handBaseline
+    // Snapshot of every competitor's current total, keyed by participant id.
+    // Used only to (re)arm the per-hand baseline, never per row during a render.
+    val currentScores = rows.associate { it.participant.participant.id to it.score }
+    // A net score change this hand closes the quick-add buttons and arms Next
+    // Hand. Comparing against the per-hand baseline (not an entry count) means
+    // adding then undoing points back to where the hand started leaves it a draw:
+    // Next Hand re-disables and only "Hand Was a Draw" stays available.
+    val baseline = handBaselineScores
+    val scoredThisHand = baseline != null &&
+        rows.any { it.score != (baseline[it.participant.participant.id] ?: 0) }
     val scoringDisabled = scoredThisHand || reachedTarget
     val winnerNames = if (target != null) {
         rows.filter { it.score >= target }.joinToString(", ") { it.participant.displayName }
@@ -174,11 +204,11 @@ fun ScoreboardScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) 
         ""
     }
 
-    // Arm the per-hand baseline from the game's total entry count on FIRST
+    // Arm the per-hand baseline from each competitor's current total on FIRST
     // load only; later emissions (each score) must not move it.
     LaunchedEffect(current) {
-        if (handBaseline == -1 && current != null) {
-            handBaseline = totalEntryCount
+        if (handBaselineScores == null && current != null) {
+            handBaselineScores = currentScores
         }
     }
 
@@ -218,7 +248,7 @@ fun ScoreboardScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) 
     // depending on the drawDealingRule preference.
     fun advanceHand(passDeal: Boolean = true) {
         val g = current ?: return
-        handBaseline = totalEntryCount
+        handBaselineScores = currentScores
         scope.launch {
             gameDao.updateGame(
                 g.game.copy(

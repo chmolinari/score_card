@@ -23,7 +23,7 @@ Pure Kotlin (no Android imports), so it unit-tests on the JVM. This is where the
 ### Scoreboard behaviors (`ui/games/ScoreboardScreen.kt`)
 
 The two load-bearing rules, ported from `GameScoreboardView`:
-- **Hand-baseline gating** — "Next Hand" stays disabled until a point is scored beyond `handBaseline` (the total `ScoreEntry` count at the hand's start, armed from the first non-null game emission), then advancing the hand re-arms it.
+- **Hand-baseline gating** — "Next Hand" stays disabled until some competitor's score differs from `handBaselineScores` (each competitor's total at the hand's start, keyed by participant id, armed from the first non-null game emission), then advancing the hand re-snapshots it. Gating on a *net score change* (not the entry count) means adding then undoing points back to where the hand started leaves the hand a draw — "Next Hand" re-disables and only "Hand Was a Draw" stays available.
 - **Target lock** — when any total reaches `targetPoints` the board prompts once to end the game; declining locks scoring until the over-target score is corrected down. The prompt fires only on a genuine false→true transition (tracked via `prevReachedTarget`), so re-entering the board / rotating / returning after process death never re-pops it — mirroring iOS's `.onChange` not firing on the initial value.
 
 ### Backup (`data/backup/`)

@@ -18,7 +18,7 @@ Room entities mirror the iOS SwiftData models. Relationships use foreign keys wi
 
 ### Domain logic (`domain/`)
 
-Pure Kotlin (no Android imports), so it unit-tests on the JVM. This is where the cross-platform semantics live, ported from the iOS models: `Tally` (played/won/drawn/in-progress, win %), `FrequentPicker` and `GameNamePicker` (the New Game ranking/pre-selection), `CompetitorSorter` + `NameComparator` (roster sort, numeric-aware), `DealingDirection`, and the `GameWithDetails`/`ParticipantWithDetails` extension properties (`rankedScores`, `topScorers`, `isDraw`, `participantsInDealingOrder`, dealer rotation, tallies). A win is the **sole** top score of a *closed* game; a tie is a draw for the top scorers only. Dealing order follows the seating rotation, not score.
+Pure Kotlin (no Android imports), so it unit-tests on the JVM. This is where the cross-platform semantics live, ported from the iOS models: `Tally` (played/won/drawn/in-progress, win %), `FrequentPicker` and `GameNamePicker` (the New Game ranking/pre-selection), `CompetitorSorter` + `NameComparator` (roster sort, numeric-aware), `DealingDirection`, `NegativeScores` (the below-zero clamp — an app-wide preference, off by default, that stops a subtraction at zero; see `docs/scoring-rules.md`), and the `GameWithDetails`/`ParticipantWithDetails` extension properties (`rankedScores`, `topScorers`, `isDraw`, `participantsInDealingOrder`, dealer rotation, tallies). A win is the **sole** top score of a *closed* game; a tie is a draw for the top scorers only. Dealing order follows the seating rotation, not score.
 
 ### Scoreboard behaviors (`ui/games/ScoreboardScreen.kt`)
 

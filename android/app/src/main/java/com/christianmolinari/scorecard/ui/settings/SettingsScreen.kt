@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.RotateLeft
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -37,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -89,6 +91,8 @@ fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit) {
         .collectAsStateWithLifecycle(initialValue = DealingDirection.CounterClockwise)
     val drawDealingRule by container.prefs.drawDealingRule
         .collectAsStateWithLifecycle(initialValue = DrawDealingRule.Ask)
+    val allowNegativeScores by container.prefs.allowNegativeScores
+        .collectAsStateWithLifecycle(initialValue = false)
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -276,6 +280,41 @@ fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit) {
                                 )
                                 RadioButton(selected = rule == drawDealingRule, onClick = null)
                             }
+                        }
+                    }
+                }
+
+                item(key = "scoring") {
+                    SettingsSection(
+                        title = "Scoring",
+                        footer = "When off, subtracting points stops a player's total at zero. " +
+                            "Turn on to allow negative scores.",
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(enabled = !isWorking) {
+                                    scope.launch {
+                                        container.prefs.setAllowNegativeScores(!allowNegativeScores)
+                                    }
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Tune,
+                                contentDescription = null,
+                                tint = ThemeColors.accent,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Text(
+                                text = "Allow scores below zero",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Switch(checked = allowNegativeScores, onCheckedChange = null)
                         }
                     }
                 }

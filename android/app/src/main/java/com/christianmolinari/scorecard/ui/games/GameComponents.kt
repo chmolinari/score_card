@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,10 +55,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.christianmolinari.scorecard.AppContainer
 import com.christianmolinari.scorecard.data.db.GameWithDetails
 import com.christianmolinari.scorecard.data.db.ParticipantWithDetails
 import com.christianmolinari.scorecard.data.db.ScoreEntryEntity
+import com.christianmolinari.scorecard.domain.NegativeScores
 import com.christianmolinari.scorecard.domain.displayName
 import com.christianmolinari.scorecard.domain.isOpen
 import com.christianmolinari.scorecard.domain.sortedEntries
@@ -198,16 +201,30 @@ fun ParticipantScoringSheet(
     val scope = rememberCoroutineScope()
     val gameDao = container.database.gameDao()
 
+    val allowNegativeScores by container.prefs.allowNegativeScores
+        .collectAsStateWithLifecycle(initialValue = false)
+
     var customAmount by remember { mutableIntStateOf(1) }
     val quickAmounts = listOf(1, 2, 3, 5, 10)
 
+    // True when scores are clamped at zero and this participant has nothing left
+    // to subtract — used to disable the subtract controls for clear feedback.
+    val subtractionBlocked = !allowNegativeScores && participant.totalScore <= 0
+
     fun add(points: Int) {
-        if (points == 0) return
+        // Clamp at zero unless the below-zero preference is on; an exhausted
+        // subtraction collapses to a no-op rather than flipping into an addition.
+        val delta = NegativeScores.effectiveDelta(
+            points = points,
+            currentTotal = participant.totalScore,
+            allowNegative = allowNegativeScores,
+        )
+        if (delta == 0) return
         scope.launch {
             gameDao.insertScoreEntry(
                 ScoreEntryEntity(
                     participantId = participant.participant.id,
-                    points = points,
+                    points = delta,
                     timestamp = Instant.now(),
                 )
             )
@@ -260,6 +277,26 @@ fun ParticipantScoringSheet(
                 }
             }
 
+            PlayfulSectionHeader(title = "Quick Subtract")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                quickAmounts.forEach { amount ->
+                    Button(
+                        onClick = { add(-amount) },
+                        enabled = !subtractionBlocked,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                        ),
+                    ) {
+                        Text("-$amount")
+                    }
+                }
+            }
+
             PlayfulSectionHeader(title = "Custom")
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -283,7 +320,7 @@ fun ParticipantScoringSheet(
             }
             OutlinedButton(
                 onClick = { add(customAmount) },
-                enabled = customAmount != 0,
+                enabled = customAmount != 0 && !(customAmount < 0 && subtractionBlocked),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Add ${GameFormatting.signedPoints(customAmount)} points")

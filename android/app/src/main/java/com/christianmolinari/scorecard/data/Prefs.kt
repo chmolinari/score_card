@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.christianmolinari.scorecard.domain.CompetitorSortOrder
 import com.christianmolinari.scorecard.domain.DealingDirection
 import com.christianmolinari.scorecard.domain.DrawDealingRule
+import com.christianmolinari.scorecard.domain.NegativeScores
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -26,6 +27,7 @@ class Prefs(private val context: Context) {
         val playersSortOrder = stringPreferencesKey("playersSortOrder")
         val teamsSortOrder = stringPreferencesKey("teamsSortOrder")
         val hasSeededGameNames = booleanPreferencesKey("hasSeededGameNames")
+        val allowNegativeScores = booleanPreferencesKey(NegativeScores.STORAGE_KEY)
     }
 
     // The direction the deal passes around the table after each hand.
@@ -68,5 +70,14 @@ class Prefs(private val context: Context) {
 
     suspend fun setHasSeededGameNames(value: Boolean) {
         context.dataStore.edit { prefs -> prefs[Keys.hasSeededGameNames] = value }
+    }
+
+    // Whether a participant's total may drop below zero. Off (default) clamps any
+    // subtraction at zero; see NegativeScores / docs/scoring-rules.md.
+    val allowNegativeScores: Flow<Boolean> = context.dataStore.data
+        .map { prefs -> prefs[Keys.allowNegativeScores] ?: false }
+
+    suspend fun setAllowNegativeScores(value: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.allowNegativeScores] = value }
     }
 }

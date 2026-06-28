@@ -21,6 +21,7 @@ struct SettingsView: View {
 
     @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
     @AppStorage(DrawDealingRule.storageKey) private var drawDealingRule: DrawDealingRule = .ask
+    @AppStorage(NegativeScores.storageKey) private var allowNegativeScores = false
 
     // Backup / reset state. (Restore lives in BackupListView.)
     @State private var isWorking = false
@@ -67,6 +68,14 @@ struct SettingsView: View {
                     Text("Gameplay")
                 } footer: {
                     Text("The direction the deal passes around the table after each hand, and who deals next when a hand ends in a draw.")
+                }
+
+                Section {
+                    Toggle("Allow scores below zero", isOn: $allowNegativeScores)
+                } header: {
+                    Text("Scoring")
+                } footer: {
+                    Text("When off, subtracting points stops a player's total at zero. Turn on to allow negative scores.")
                 }
 
                 Section("Your Data") {

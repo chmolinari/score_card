@@ -293,6 +293,25 @@ struct ScoreCardTests {
         #expect(!top.contains { $0.name == "Cal" })  // zero-usage excluded
     }
 
+    // MARK: Below-zero scoring policy
+
+    @Test func negativeScoreClampStopsAtZero() {
+        // Additions always pass through, whatever the policy.
+        #expect(NegativeScores.effectiveDelta(points: 3, currentTotal: 0, allowNegative: false) == 3)
+        #expect(NegativeScores.effectiveDelta(points: 3, currentTotal: 5, allowNegative: true) == 3)
+
+        // Clamping (default): a subtraction is reduced so the total stops at zero.
+        #expect(NegativeScores.effectiveDelta(points: -5, currentTotal: 2, allowNegative: false) == -2)
+        // Exact subtraction down to zero is unchanged.
+        #expect(NegativeScores.effectiveDelta(points: -2, currentTotal: 2, allowNegative: false) == -2)
+        // Already at zero: subtraction is dropped entirely (never flips to an addition).
+        #expect(NegativeScores.effectiveDelta(points: -5, currentTotal: 0, allowNegative: false) == 0)
+        #expect(NegativeScores.effectiveDelta(points: -5, currentTotal: -3, allowNegative: false) == 0)
+
+        // When below-zero is allowed, subtraction passes through unchanged.
+        #expect(NegativeScores.effectiveDelta(points: -5, currentTotal: 2, allowNegative: true) == -5)
+    }
+
     // MARK: Players/Teams list ordering
 
     /// A stand-in for a player or team: the sorter only needs a name and a tally.

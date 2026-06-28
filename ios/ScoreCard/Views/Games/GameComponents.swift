@@ -98,9 +98,17 @@ struct ParticipantScoringSheet: View {
 
     @Bindable var participant: GameParticipant
 
+    @AppStorage(NegativeScores.storageKey) private var allowNegativeScores = false
+
     @State private var customAmount = 1
 
     private let quickAmounts = [1, 2, 3, 5, 10]
+
+    /// True when scores are clamped at zero and this participant has nothing left
+    /// to subtract — used to disable the subtract controls for clear feedback.
+    private var subtractionBlocked: Bool {
+        !allowNegativeScores && participant.totalScore <= 0
+    }
 
     var body: some View {
         NavigationStack {
@@ -132,6 +140,18 @@ struct ParticipantScoringSheet: View {
                     }
                 }
 
+                Section("Quick Subtract") {
+                    HStack(spacing: 8) {
+                        ForEach(quickAmounts, id: \.self) { amount in
+                            Button("-\(amount)") { add(-amount) }
+                                .buttonStyle(.bordered)
+                                .frame(maxWidth: .infinity)
+                                .disabled(subtractionBlocked)
+                        }
+                    }
+                    .tint(.red)
+                }
+
                 Section("Custom") {
                     Stepper(value: $customAmount, in: -100...100) {
                         HStack {
@@ -149,7 +169,7 @@ struct ParticipantScoringSheet: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
-                    .disabled(customAmount == 0)
+                    .disabled(customAmount == 0 || (customAmount < 0 && subtractionBlocked))
                 }
 
                 if !participant.sortedEntries.isEmpty {
@@ -181,8 +201,11 @@ struct ParticipantScoringSheet: View {
     }
 
     private func add(_ points: Int) {
-        guard points != 0 else { return }
-        let entry = ScoreEntry(points: points)
+        let delta = NegativeScores.effectiveDelta(points: points,
+                                                  currentTotal: participant.totalScore,
+                                                  allowNegative: allowNegativeScores)
+        guard delta != 0 else { return }
+        let entry = ScoreEntry(points: delta)
         entry.participant = participant
         modelContext.insert(entry)
     }

@@ -26,11 +26,13 @@ struct GameScoreboardView: View {
     @State private var showTargetReachedPrompt = false
     @State private var declinedTargetEnd = false
 
-    // Total score entries the game had at the start of the current hand. "Next
-    // Hand" stays disabled until at least one point is scored beyond this, then
-    // is reset back to the current total when the hand is advanced — so it's
-    // immediately disabled again until the next score lands.
-    @State private var handBaselineEntryCount = 0
+    // Each competitor's total score at the start of the current hand, keyed by
+    // identity. "Next Hand" stays disabled until some competitor's score differs
+    // from this baseline — i.e. the hand actually changed the score, not merely
+    // added entries that cancel back out. Re-snapshotted when the hand advances,
+    // so the button disables again until the next net change. A hand that leaves
+    // every score where it started can only be resolved as a draw.
+    @State private var handBaselineScores: [PersistentIdentifier: Int] = [:]
 
     // Bumped on every manual score change. SwiftData does NOT reliably fire
     // SwiftUI observation for a to-many relationship (`scoreEntries`) that's
@@ -48,10 +50,15 @@ struct GameScoreboardView: View {
     // asked who deals next (the `.ask` rule).
     @State private var showDrawDealerPrompt = false
 
-    /// Running count of every competitor's score entries. Used only off the hot
-    /// path (to (re)arm the per-hand baseline), never per row during a render.
-    private var totalEntryCount: Int {
-        (game.participants ?? []).reduce(0) { $0 + ($1.scoreEntries?.count ?? 0) }
+    /// Snapshot of every competitor's current total score, keyed by identity.
+    /// Used only off the hot path to (re)arm the per-hand baseline, never per row
+    /// during a render.
+    private func currentScores() -> [PersistentIdentifier: Int] {
+        var scores: [PersistentIdentifier: Int] = [:]
+        for participant in game.participants ?? [] {
+            scores[participant.persistentModelID] = (participant.scoreEntries ?? []).reduce(0) { $0 + $1.points }
+        }
+        return scores
     }
 
     var body: some View {
@@ -67,14 +74,17 @@ struct GameScoreboardView: View {
         // handed down — so a score tap doesn't re-sum and re-sort per row, which
         // was the source of the lag on older devices.
         let rows = game.participantsInDealingOrder(dealingDirection).map {
-            participant -> (participant: GameParticipant, score: Int, entries: Int) in
+            participant -> (participant: GameParticipant, score: Int) in
             let entries = participant.scoreEntries ?? []
-            return (participant, entries.reduce(0) { $0 + $1.points }, entries.count)
+            return (participant, entries.reduce(0) { $0 + $1.points })
         }
         let target = game.hasTarget ? game.targetPoints : nil
         let reachedTarget = target.map { t in rows.contains { $0.score >= t } } ?? false
-        // A point scored this hand closes the quick-add buttons and arms Next Hand.
-        let scoredThisHand = rows.reduce(0) { $0 + $1.entries } > handBaselineEntryCount
+        // A net score change this hand closes the quick-add buttons and arms Next
+        // Hand. Comparing against the per-hand baseline (not the entry count) means
+        // adding then undoing points back to where the hand started leaves it a
+        // draw: Next Hand re-disables and only "Hand Was a Draw" stays available.
+        let scoredThisHand = rows.contains { $0.score != (handBaselineScores[$0.participant.persistentModelID] ?? 0) }
         let scoringDisabled = scoredThisHand || reachedTarget
         let winnerNames = target.map { t in
             rows.filter { $0.score >= t }.map(\.participant.displayName).joined(separator: ", ")
@@ -191,7 +201,7 @@ struct GameScoreboardView: View {
             // while the scoreboard is up so each tap doesn't trigger a CloudKit
             // save; we persist deliberately when the hand advances or we leave.
             modelContext.autosaveEnabled = false
-            handBaselineEntryCount = totalEntryCount
+            handBaselineScores = currentScores()
         }
         .onDisappear {
             persist()
@@ -216,7 +226,7 @@ struct GameScoreboardView: View {
             if passDeal { game.advanceDealer(dealingDirection) }
             game.currentHand += 1
         }
-        handBaselineEntryCount = totalEntryCount
+        handBaselineScores = currentScores()
         persist()
     }
 

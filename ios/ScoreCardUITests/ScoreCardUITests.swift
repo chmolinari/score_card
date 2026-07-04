@@ -27,6 +27,7 @@ final class ScoreCardUITests: XCTestCase {
     /// "add new players/teams during game creation" requirement end to end.
     @MainActor
     func testCreatePlayersInlineDuringGameCreation() throws {
+        XCUIDevice.shared.orientation = .portrait   // launch tests may leave landscape
         let app = XCUIApplication()
         app.launchArguments += ["-uitesting"]   // clean in-memory store
         app.launch()
@@ -74,6 +75,7 @@ final class ScoreCardUITests: XCTestCase {
     /// and then clears the store.
     @MainActor
     func testDeleteAllDataResetsTheStore() throws {
+        XCUIDevice.shared.orientation = .portrait   // launch tests may leave landscape
         let app = XCUIApplication()
         app.launchArguments += ["-uitesting"]   // clean in-memory store
         app.launch()
@@ -89,9 +91,11 @@ final class ScoreCardUITests: XCTestCase {
         field.typeText("Temp Player")
         app.buttons["Save"].tap()
 
-        // Go to Settings and reset.
+        // Go to Settings and reset. "Back Up Now" lives below the fold since
+        // the Scoring section was added, and the lazy List doesn't expose
+        // off-screen rows — wait on the title instead, and scroll to controls.
         app.tabBars.buttons["Settings"].tap()
-        XCTAssertTrue(app.buttons["Back Up Now"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Settings"].firstMatch.waitForExistence(timeout: 5))
         tapWhenScrolledIntoView(app.buttons["Delete All Data"], in: app)
 
         // Confirmation is required before anything is deleted.
@@ -113,6 +117,7 @@ final class ScoreCardUITests: XCTestCase {
     /// the backup from the in-app list and confirm the data returns.
     @MainActor
     func testBackupDeleteRestoreRoundTrip() throws {
+        XCUIDevice.shared.orientation = .portrait   // launch tests may leave landscape
         let app = XCUIApplication()
         app.launchArguments += ["-uitesting"]   // clean in-memory store
         app.launch()
@@ -130,11 +135,11 @@ final class ScoreCardUITests: XCTestCase {
         app.buttons["Save"].tap()
         XCTAssertTrue(app.staticTexts[marker].waitForExistence(timeout: 5))
 
-        // Back up.
+        // Back up. "Back Up Now" is below the fold (see the reset test), so
+        // scroll it into view before tapping.
         app.tabBars.buttons["Settings"].tap()
-        let backUp = app.buttons["Back Up Now"]
-        XCTAssertTrue(backUp.waitForExistence(timeout: 5))
-        backUp.tap()
+        XCTAssertTrue(app.staticTexts["Settings"].firstMatch.waitForExistence(timeout: 5))
+        tapWhenScrolledIntoView(app.buttons["Back Up Now"], in: app)
         XCTAssertTrue(app.staticTexts["Backup Complete"].waitForExistence(timeout: 10))
         app.buttons["OK"].tap()
 
@@ -151,7 +156,7 @@ final class ScoreCardUITests: XCTestCase {
 
         // Restore from the in-app backup list (newest is first).
         app.tabBars.buttons["Settings"].tap()
-        app.buttons["Restore from Backup…"].tap()
+        tapWhenScrolledIntoView(app.buttons["Restore from Backup…"], in: app)
         XCTAssertTrue(app.staticTexts["Available Backups"].waitForExistence(timeout: 10),
                       "The backup just created should be listed")
         let firstBackup = app.buttons["backupRow"].firstMatch

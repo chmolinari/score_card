@@ -19,6 +19,10 @@ final class ScoringSheetUITests: XCTestCase {
 
     @MainActor
     func testSwipeDeletingScoreEntriesDoesNotCrash() throws {
+        // The launch-screenshot tests iterate UI configurations and can leave
+        // the simulator in landscape, which pushes the controls this test
+        // needs below the fold — pin portrait.
+        XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launchArguments += ["-uitesting"]   // clean in-memory store
         app.launch()
@@ -89,6 +93,7 @@ final class ScoringSheetUITests: XCTestCase {
     /// the scoreboard's List behind the sheet.
     @MainActor
     func testDeletingEntriesAfterDecliningTargetEndDoesNotCrash() throws {
+        XCUIDevice.shared.orientation = .portrait   // see the swipe test
         let app = XCUIApplication()
         app.launchArguments += ["-uitesting"]   // clean in-memory store
         app.launch()
@@ -145,10 +150,18 @@ final class ScoringSheetUITests: XCTestCase {
         bobCell.buttons["+3"].tap()
 
         // --- Target reached: decline ending the game (board locks) ---
-        let notYet = app.buttons["Not Yet"]
-        XCTAssertTrue(notYet.waitForExistence(timeout: 5),
+        // iOS 18 renders the confirmation dialog as an action sheet with a
+        // "Not Yet" cancel button; iOS 26 renders an anchored popover that
+        // omits the cancel action — there, dismissing the popover by tapping
+        // outside it IS the decline path.
+        XCTAssertTrue(app.staticTexts["End the game?"].firstMatch.waitForExistence(timeout: 5),
                       "Reaching the target should prompt to end the game")
-        notYet.tap()
+        let notYet = app.buttons["Not Yet"]
+        if notYet.waitForExistence(timeout: 2) {
+            notYet.tap()
+        } else {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)).tap()
+        }
 
         // --- Correct the score from the Add Points sheet ---
         let more = bobCell.buttons["scoreOptions"].firstMatch

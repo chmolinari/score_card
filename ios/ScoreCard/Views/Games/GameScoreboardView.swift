@@ -142,7 +142,12 @@ struct GameScoreboardView: View {
             }
         }
         .sheet(item: $scoringParticipant) { participant in
-            ParticipantScoringSheet(participant: participant)
+            // onMutate keeps the board behind the sheet in sync: adding or
+            // deleting entries must re-derive the rows AND the target banner
+            // (whose section appears/disappears with `reachedTarget`) at
+            // mutation time, not whenever SwiftData observation or a CloudKit
+            // merge happens to fire.
+            ParticipantScoringSheet(participant: participant, onMutate: { scoreRevision += 1 })
                 .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showSeatingSetup) {
@@ -456,6 +461,8 @@ private struct ScoreboardRow: View {
             }
             .buttonStyle(.bordered)
             .tint(.secondary)
+            .accessibilityLabel("Score options")
+            .accessibilityIdentifier("scoreOptions")
         }
     }
 

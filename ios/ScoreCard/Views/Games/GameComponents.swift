@@ -98,9 +98,25 @@ struct ParticipantScoringSheet: View {
 
     @Bindable var participant: GameParticipant
 
+    /// Called after any score mutation so the presenting scoreboard can
+    /// invalidate its derived totals deterministically (see
+    /// `GameScoreboardView.scoreRevision` — SwiftData does not reliably fire
+    /// observation for a to-many relationship mutated via its inverse).
+    var onMutate: () -> Void = {}
+
     @AppStorage(NegativeScores.storageKey) private var allowNegativeScores = false
 
     @State private var customAmount = 1
+
+    // The Entries list renders from this snapshot instead of reading the
+    // SwiftData relationship per render. The relationship is not a reliable
+    // List data source on the CloudKit-backed store: deletions reach it on
+    // their own schedule (and background sync merges can touch it mid-render),
+    // so on iOS 18 the collection view's row bookkeeping could disagree with
+    // the data and abort with "invalid number of items in section". The
+    // snapshot changes only in `add`/`deleteEntries`, in lockstep with what
+    // UIKit animates.
+    @State private var entries: [ScoreEntry] = []
 
     private let quickAmounts = [1, 2, 3, 5, 10]
 
@@ -120,6 +136,7 @@ struct ParticipantScoringSheet: View {
                             Text("\(participant.totalScore)")
                                 .font(.system(size: 54, weight: .bold, design: .rounded))
                                 .monospacedDigit()
+                                .accessibilityIdentifier("sheetTotal")
                             Text(participant.displayName)
                                 .font(.headline)
                             Text(participant.subtitle)
@@ -136,6 +153,7 @@ struct ParticipantScoringSheet: View {
                             Button("+\(amount)") { add(amount) }
                                 .buttonStyle(.borderedProminent)
                                 .frame(maxWidth: .infinity)
+                                .accessibilityIdentifier("sheetAdd\(amount)")
                         }
                     }
                 }
@@ -172,9 +190,14 @@ struct ParticipantScoringSheet: View {
                     .disabled(customAmount == 0 || (customAmount < 0 && subtractionBlocked))
                 }
 
-                if !participant.sortedEntries.isEmpty {
+                if !entries.isEmpty {
                     Section("Entries") {
-                        ForEach(participant.sortedEntries) { entry in
+                        // Row identity must survive a save: `persistentModelID`
+                        // changes from temporary to permanent when an unsaved
+                        // entry is first persisted, which would re-identify
+                        // rows mid-swipe. ObjectIdentifier sticks to the live
+                        // instance for the sheet's lifetime.
+                        ForEach(entries, id: \.stableID) { entry in
                             HStack {
                                 Text(signedPoints(entry.points))
                                     .font(.body.weight(.semibold))
@@ -197,6 +220,7 @@ struct ParticipantScoringSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .onAppear { entries = participant.sortedEntries }
         }
     }
 
@@ -208,12 +232,30 @@ struct ParticipantScoringSheet: View {
         let entry = ScoreEntry(points: delta)
         entry.participant = participant
         modelContext.insert(entry)
+        entries = participant.sortedEntries
+        onMutate()
     }
 
     private func deleteEntries(at offsets: IndexSet) {
-        let entries = participant.sortedEntries
-        for index in offsets {
-            modelContext.delete(entries[index])
+        let doomed = offsets.map { entries[$0] }
+        // Snapshot first: the List must lose exactly the swiped rows in the
+        // same update UIKit is animating.
+        entries.remove(atOffsets: offsets)
+        for entry in doomed {
+            modelContext.delete(entry)
         }
+        // The scoreboard turns autosave off while a hand is being scored, so
+        // without an explicit save the deletion would sit pending in the
+        // context (and still count toward `participant.totalScore`) until the
+        // next hand boundary. A correction is a deliberate, rare act — persist
+        // it like `advanceHand` does.
+        try? modelContext.save()
+        onMutate()
     }
+}
+
+private extension ScoreEntry {
+    /// Row identity for the sheet's Entries list: unique per live instance and
+    /// stable across saves, unlike `persistentModelID` (see the ForEach above).
+    var stableID: ObjectIdentifier { ObjectIdentifier(self) }
 }

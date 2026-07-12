@@ -20,6 +20,18 @@ enum GameRegistration {
         let points: Int
     }
 
+    /// The date a registered game is filed under, given how much the user
+    /// remembers: date and time are taken verbatim; a date without a time files
+    /// the game at the exact start of that day (a real stamp essentially never
+    /// lands on 00:00:00 sharp, so display treats midnight as "date only");
+    /// no date at all files it under the registration moment, like a live game.
+    static func playedDate(hasDate: Bool, hasTime: Bool, selection: Date,
+                           now: Date = .now, calendar: Calendar = .current) -> Date {
+        guard hasDate else { return now }
+        guard hasTime else { return calendar.startOfDay(for: selection) }
+        return selection
+    }
+
     /// Create and save a closed, backdated game. `createdAt` and `closedAt` are
     /// both the played-on date, so history ordering follows when the game was
     /// actually played. Final totals may be zero or negative — the below-zero

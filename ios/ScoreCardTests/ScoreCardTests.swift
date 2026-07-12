@@ -927,6 +927,38 @@ struct ScoreCardTests {
         #expect(padded.locationName == "Nonna's house")
     }
 
+    /// The filing date honors how much the user remembers: full date + time
+    /// verbatim, date only at the start of that day, and neither means "now".
+    @Test func playedDateHonorsDateAndTimeOptOuts() throws {
+        let calendar = Calendar.current
+        let now = Date(timeIntervalSince1970: 1_750_000_000)
+        let selection = try #require(calendar.date(from: DateComponents(year: 2024, month: 6, day: 14,
+                                                                        hour: 18, minute: 45)))
+
+        // No date at all → the registration moment.
+        #expect(GameRegistration.playedDate(hasDate: false, hasTime: false,
+                                            selection: selection, now: now, calendar: calendar) == now)
+        // Date without a time → the exact start of that day.
+        #expect(GameRegistration.playedDate(hasDate: true, hasTime: false,
+                                            selection: selection, now: now, calendar: calendar)
+                == calendar.startOfDay(for: selection))
+        // Date and time → verbatim.
+        #expect(GameRegistration.playedDate(hasDate: true, hasTime: true,
+                                            selection: selection, now: now, calendar: calendar) == selection)
+    }
+
+    /// A stamp at exactly midnight means "time unknown" (date-only
+    /// registration), so the formatter must not show a fabricated 00:00.
+    @Test func dateTimeFormattingOmitsTimeAtExactMidnight() throws {
+        let calendar = Calendar.current
+        let midnight = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let afternoon = try #require(calendar.date(byAdding: .minute, value: 870, to: midnight))  // 14:30
+
+        #expect(GameFormatting.dateTime(midnight) == midnight.formatted(date: .abbreviated, time: .omitted))
+        #expect(GameFormatting.dateTime(afternoon) == afternoon.formatted(date: .abbreviated, time: .shortened))
+        #expect(GameFormatting.dateTime(midnight) != midnight.formatted(date: .abbreviated, time: .shortened))
+    }
+
     /// The selection semantics shared by New Game and Register Past Game:
     /// team games and player games never mix, duplicates are ignored, and
     /// toggling an existing selection removes it.

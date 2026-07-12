@@ -105,6 +105,8 @@ private struct RegisterGameDetailsView: View {
     var onSaved: () -> Void
 
     @State private var scores: [Int?]
+    @State private var hasDate = true
+    @State private var hasTime = false
     @State private var playedAt = Date.now
     @State private var locationText = ""
 
@@ -138,12 +140,24 @@ private struct RegisterGameDetailsView: View {
             }
 
             Section {
-                DatePicker("Played on",
-                           selection: $playedAt,
-                           in: ...Date.now,
-                           displayedComponents: [.date, .hourAndMinute])
+                Toggle("Set the date", isOn: $hasDate.animation())
+                if hasDate {
+                    DatePicker("Played on",
+                               selection: $playedAt,
+                               in: ...Date.now,
+                               displayedComponents: hasTime ? [.date, .hourAndMinute] : [.date])
+                    Toggle("Set the time", isOn: $hasTime.animation())
+                }
+            } header: {
+                Text("Played On")
             } footer: {
-                Text("The game is filed in History under this date.")
+                if !hasDate {
+                    Text("Without a date, the game is filed in History under today.")
+                } else if !hasTime {
+                    Text("The game is filed in History under this date, without a time of day.")
+                } else {
+                    Text("The game is filed in History under this date and time.")
+                }
             }
 
             Section {
@@ -168,7 +182,9 @@ private struct RegisterGameDetailsView: View {
 
         try? GameRegistration.register(title: draft.title,
                                        finalScores: finalScores,
-                                       playedAt: playedAt,
+                                       playedAt: GameRegistration.playedDate(hasDate: hasDate,
+                                                                             hasTime: hasTime,
+                                                                             selection: playedAt),
                                        locationName: locationText,
                                        in: modelContext)
         // Remember this as the most recently used name so it pre-selects next time.

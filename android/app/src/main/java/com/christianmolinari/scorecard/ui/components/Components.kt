@@ -31,6 +31,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -237,6 +238,8 @@ fun EmptyState(
     description: String,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
@@ -268,6 +271,10 @@ fun EmptyState(
         if (actionLabel != null && onAction != null) {
             Spacer(modifier = Modifier.height(16.dp))
             Button(onClick = onAction) { Text(actionLabel) }
+        }
+        if (secondaryActionLabel != null && onSecondaryAction != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = onSecondaryAction) { Text(secondaryActionLabel) }
         }
     }
 }

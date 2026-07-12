@@ -134,8 +134,11 @@ fun GameInfoSection(game: GameWithDetails) {
                 InfoRow(icon = Icons.Filled.Place, text = displayAddress)
             }
 
+            // For a registered past game createdAt == closedAt, so this line
+            // would only repeat the date plus a meaningless "less than a
+            // minute" — live games always close strictly after creation.
             val closedAt = game.game.closedAt
-            if (closedAt != null) {
+            if (closedAt != null && closedAt.isAfter(game.game.createdAt)) {
                 InfoRow(
                     icon = Icons.Filled.CheckCircle,
                     text = "Ended ${GameFormatting.dateTime(closedAt)} · " +

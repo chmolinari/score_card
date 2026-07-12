@@ -132,6 +132,27 @@ final class ScoreCardUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Old Match"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Alice"].firstMatch.waitForExistence(timeout: 5),
                       "The row's trophy badge should name the winner")
+
+        // Reopen the flow: everything created the first time around must now be
+        // offered by the pickers, exactly like New Game. Selecting the existing
+        // players enables Next straight away — which also proves the game name
+        // was pre-selected as the most recently used one.
+        app.buttons["Add Game"].tap()
+        app.buttons["Register Past Game"].tap()
+
+        let aliceRow = app.buttons["Alice"].firstMatch
+        XCTAssertTrue(aliceRow.waitForExistence(timeout: 5),
+                      "Previously created players should be offered in the picker")
+        aliceRow.tap()
+        app.buttons["Bob"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["1. Alice"].waitForExistence(timeout: 5),
+                      "Picking an existing player should select them")
+        XCTAssertTrue(app.staticTexts["2. Bob"].waitForExistence(timeout: 5))
+
+        let nextAgain = app.buttons["Next"]
+        XCTAssertTrue(nextAgain.waitForExistence(timeout: 5))
+        XCTAssertTrue(nextAgain.isEnabled,
+                      "The last-used game name should be pre-selected, so two players suffice")
     }
 
     /// Verifies the destructive "Delete All Data" reset asks for confirmation

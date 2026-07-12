@@ -25,6 +25,7 @@ import com.christianmolinari.scorecard.AppContainer
 import com.christianmolinari.scorecard.ui.games.GameDetailScreen
 import com.christianmolinari.scorecard.ui.games.GamesScreen
 import com.christianmolinari.scorecard.ui.games.NewGameScreen
+import com.christianmolinari.scorecard.ui.games.RegisterGameScreen
 import com.christianmolinari.scorecard.ui.games.ScoreboardScreen
 import com.christianmolinari.scorecard.ui.players.PlayersScreen
 import com.christianmolinari.scorecard.ui.settings.BackupListScreen
@@ -92,6 +93,7 @@ fun ScoreCardApp(container: AppContainer) {
                     onOpenGame = { navController.navigate("scoreboard/$it") },
                     onOpenDetail = { navController.navigate("detail/$it") },
                     onNewGame = { navController.navigate("newGame") },
+                    onRegisterGame = { navController.navigate("registerGame") },
                 )
             }
             composable("players") {
@@ -117,6 +119,15 @@ fun ScoreCardApp(container: AppContainer) {
                             popUpTo("newGame") { inclusive = true }
                         }
                     },
+                    onCancel = { navController.popBackStack() },
+                )
+            }
+            composable("registerGame") {
+                RegisterGameScreen(
+                    container = container,
+                    // No push into the game afterwards — the registered game
+                    // simply appears under History, like the iOS sheet.
+                    onSaved = { navController.popBackStack() },
                     onCancel = { navController.popBackStack() },
                 )
             }

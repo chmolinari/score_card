@@ -24,10 +24,13 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.SportsScore
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,7 +42,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -73,10 +79,13 @@ fun GamesScreen(
     onOpenGame: (Long) -> Unit,
     onOpenDetail: (Long) -> Unit,
     onNewGame: () -> Unit,
+    onRegisterGame: () -> Unit,
 ) {
     val games by container.database.gameDao().observeAllWithDetails()
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
+    // The "+" button offers both ways to add a game (like the iOS Menu).
+    var isAddMenuOpen by remember { mutableStateOf(false) }
 
     val openGames = games.filter { it.isOpen }
     val closedGames = games.filter { !it.isOpen }
@@ -88,8 +97,31 @@ fun GamesScreen(
                 TopAppBar(
                     title = { Text("Games") },
                     actions = {
-                        IconButton(onClick = onNewGame) {
-                            Icon(Icons.Filled.Add, contentDescription = "New Game")
+                        Box {
+                            IconButton(onClick = { isAddMenuOpen = true }) {
+                                Icon(Icons.Filled.Add, contentDescription = "Add Game")
+                            }
+                            DropdownMenu(
+                                expanded = isAddMenuOpen,
+                                onDismissRequest = { isAddMenuOpen = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("New Game") },
+                                    leadingIcon = { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
+                                    onClick = {
+                                        isAddMenuOpen = false
+                                        onNewGame()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Register Past Game") },
+                                    leadingIcon = { Icon(Icons.Filled.History, contentDescription = null) },
+                                    onClick = {
+                                        isAddMenuOpen = false
+                                        onRegisterGame()
+                                    },
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -109,6 +141,8 @@ fun GamesScreen(
                         description = "Start a game to begin keeping score.",
                         actionLabel = "New Game",
                         onAction = onNewGame,
+                        secondaryActionLabel = "Register Past Game",
+                        onSecondaryAction = onRegisterGame,
                     )
                 }
             } else {

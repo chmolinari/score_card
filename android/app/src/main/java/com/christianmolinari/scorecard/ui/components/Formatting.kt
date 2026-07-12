@@ -2,6 +2,7 @@ package com.christianmolinari.scorecard.ui.components
 
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -9,12 +10,20 @@ import java.time.format.FormatStyle
 // Small formatting helpers shared across the game screens.
 object GameFormatting {
     // "1 Jun 2026 at 14:30" style stamp for a game's date + time, in the
-    // user's locale and time zone.
-    fun dateTime(instant: Instant): String =
-        DateTimeFormatter
-            .ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-            .withZone(ZoneId.systemDefault())
-            .format(instant)
+    // user's locale and time zone. A stamp at exactly local midnight means
+    // "date known, time unknown" (a registered past game whose time of day
+    // wasn't set), so the time is omitted — live games are stamped with
+    // millisecond precision and essentially never land on 00:00:00.000. The
+    // zone parameter exists for tests; production callers use the default.
+    fun dateTime(instant: Instant, zone: ZoneId = ZoneId.systemDefault()): String {
+        val style =
+            if (instant.atZone(zone).toLocalTime() == LocalTime.MIDNIGHT) {
+                DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+            } else {
+                DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+            }
+        return style.withZone(zone).format(instant)
+    }
 
     // Compact duration like "1h 12m" between two instants.
     fun duration(from: Instant, to: Instant): String {

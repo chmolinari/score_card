@@ -71,6 +71,69 @@ final class ScoreCardUITests: XCTestCase {
                       "The newly started game should show in the list")
     }
 
+    /// Registers a game that was played outside the app: inline-created
+    /// players, final scores, and a played-on date, ending up directly in the
+    /// History section with the right winner.
+    @MainActor
+    func testRegisterPastGameAppearsInHistory() throws {
+        XCUIDevice.shared.orientation = .portrait   // launch tests may leave landscape
+        let app = XCUIApplication()
+        app.launchArguments += ["-uitesting"]   // clean in-memory store
+        app.launch()
+
+        // Open the Register Past Game sheet from the empty state.
+        let register = app.buttons["Register Past Game"].firstMatch
+        XCTAssertTrue(register.waitForExistence(timeout: 10))
+        register.tap()
+
+        // Same selection flow as New Game: inline players + a game name.
+        addPlayerInline(app, name: "Alice")
+        addPlayerInline(app, name: "Bob")
+        XCTAssertTrue(app.staticTexts["1. Alice"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["2. Bob"].waitForExistence(timeout: 5))
+
+        app.buttons["New Game Name"].tap()
+        let nameField = app.textFields["Game name (e.g. Scopa, Briscola)"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5))
+        nameField.tap()
+        nameField.typeText("Old Match")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts["Old Match"].waitForExistence(timeout: 5))
+
+        let next = app.buttons["Next"]
+        XCTAssertTrue(next.waitForExistence(timeout: 5))
+        XCTAssertTrue(next.isEnabled)
+        next.tap()
+
+        // Details step: final scores. Tapping the next field commits the
+        // previous one (TextField(value:format:) updates on commit).
+        let score0 = app.textFields["registerScore0"]
+        XCTAssertTrue(score0.waitForExistence(timeout: 5), "Details step should appear")
+        let saveGame = app.buttons["Save Game"]
+        XCTAssertTrue(saveGame.waitForExistence(timeout: 5))
+        XCTAssertFalse(saveGame.isEnabled, "Save requires every final score")
+
+        score0.tap()
+        score0.typeText("21")
+        let score1 = app.textFields["registerScore1"]
+        score1.tap()
+        score1.typeText("15")
+
+        let location = app.textFields["Location (optional)"]
+        location.tap()   // commits the last score field
+        location.typeText("Nonna's House")
+
+        XCTAssertTrue(saveGame.isEnabled, "Save should enable once all scores are set")
+        saveGame.tap()
+
+        // The sheet dismisses and the game lands straight in History.
+        XCTAssertTrue(app.staticTexts["History"].waitForExistence(timeout: 10),
+                      "A registered game should be filed under History")
+        XCTAssertTrue(app.staticTexts["Old Match"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Alice"].firstMatch.waitForExistence(timeout: 5),
+                      "The row's trophy badge should name the winner")
+    }
+
     /// Verifies the destructive "Delete All Data" reset asks for confirmation
     /// and then clears the store.
     @MainActor

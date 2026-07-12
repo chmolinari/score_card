@@ -15,6 +15,7 @@ struct GamesView: View {
     @Query(sort: \Game.createdAt, order: .reverse) private var games: [Game]
 
     @State private var isCreatingGame = false
+    @State private var isRegisteringGame = false
     /// Set by the New Game flow while its sheet is still up; promoted to
     /// `openedGame` after the sheet dismisses to avoid a present/push race.
     @State private var pendingGame: Game?
@@ -35,6 +36,8 @@ struct GamesView: View {
                     } actions: {
                         Button("New Game") { isCreatingGame = true }
                             .buttonStyle(.borderedProminent)
+                        Button("Register Past Game") { isRegisteringGame = true }
+                            .buttonStyle(.bordered)
                     }
                 } else {
                     List {
@@ -82,10 +85,19 @@ struct GamesView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isCreatingGame = true
+                    Menu {
+                        Button {
+                            isCreatingGame = true
+                        } label: {
+                            Label("New Game", systemImage: "play.fill")
+                        }
+                        Button {
+                            isRegisteringGame = true
+                        } label: {
+                            Label("Register Past Game", systemImage: "clock.arrow.circlepath")
+                        }
                     } label: {
-                        Label("New Game", systemImage: "plus")
+                        Label("Add Game", systemImage: "plus")
                     }
                 }
             }
@@ -99,6 +111,9 @@ struct GamesView: View {
                 }
             }) {
                 NewGameView { game in pendingGame = game }
+            }
+            .sheet(isPresented: $isRegisteringGame) {
+                RegisterGameView()
             }
         }
     }

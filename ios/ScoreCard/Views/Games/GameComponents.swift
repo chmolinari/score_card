@@ -49,7 +49,9 @@ struct GameInfoHeader: View {
                     .font(.subheadline)
             }
 
-            if let closedAt = game.closedAt {
+            // For a registered past game closedAt equals createdAt, so the line
+            // would just repeat the date above with a meaningless duration.
+            if let closedAt = game.closedAt, closedAt > game.createdAt {
                 Label("Ended \(GameFormatting.dateTime(closedAt)) · \(GameFormatting.duration(from: game.createdAt, to: closedAt))",
                       systemImage: "checkmark.circle")
                     .font(.subheadline)

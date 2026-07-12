@@ -789,4 +789,171 @@ struct ScoreCardTests {
         let scopa = try #require(restored.first { $0.name == "Scopa" })
         #expect(scopa.lastUsedAt == Date(timeIntervalSince1970: 700))
     }
+
+    // MARK: - Registering a past game
+
+    @Test func registeredGameIsClosedAndBackdated() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+
+        let playedAt = Date(timeIntervalSince1970: 1_500_000_000)
+        let game = try GameRegistration.register(title: "Scopa",
+                                                 finalScores: [.init(competitor: .player(alice), points: 21),
+                                                               .init(competitor: .player(bob), points: 15)],
+                                                 playedAt: playedAt,
+                                                 locationName: "Nonna's house",
+                                                 in: context)
+
+        #expect(game.isOpen == false)
+        #expect(game.createdAt == playedAt)
+        #expect(game.closedAt == playedAt)
+        #expect(game.hasTarget == false)
+        #expect(game.targetPoints == nil)
+        #expect(game.hasSeating == false)
+        #expect(game.locationName == "Nonna's house")
+        #expect(game.latitude == nil && game.longitude == nil)
+        let entries = (game.participants ?? []).flatMap { $0.scoreEntries ?? [] }
+        #expect(entries.count == 2)
+        #expect(entries.allSatisfy { $0.timestamp == playedAt })
+    }
+
+    @Test func registeredGameRanksWinnersAndFeedsTallies() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+
+        let game = try GameRegistration.register(title: "Scopa",
+                                                 finalScores: [.init(competitor: .player(alice), points: 21),
+                                                               .init(competitor: .player(bob), points: 15)],
+                                                 playedAt: .now,
+                                                 locationName: nil,
+                                                 in: context)
+
+        let winner = try #require(game.rankedParticipants.first)
+        #expect(winner.displayName == "Alice")
+        #expect(winner.isWinner)
+        #expect(alice.tally.played == 1)
+        #expect(alice.tally.won == 1)
+        #expect(bob.tally.played == 1)
+        #expect(bob.tally.won == 0)
+        // usageCount derives from participations, so registration counts too.
+        #expect(alice.usageCount == 1)
+        #expect(bob.usageCount == 1)
+    }
+
+    @Test func registeredGameTiedFinalsCountAsDraw() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let red = Team(name: "Red")
+        let blue = Team(name: "Blue")
+        [red, blue].forEach(context.insert)
+
+        let game = try GameRegistration.register(title: "Tressette",
+                                                 finalScores: [.init(competitor: .team(red), points: 10),
+                                                               .init(competitor: .team(blue), points: 10)],
+                                                 playedAt: .now,
+                                                 locationName: nil,
+                                                 in: context)
+
+        #expect(game.isDraw)
+        #expect(red.tally.drawn == 1)
+        #expect(red.tally.won == 0)
+        #expect(blue.tally.drawn == 1)
+        #expect(blue.tally.won == 0)
+    }
+
+    @Test func registeredGameAllowsNegativeAndZeroFinals() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+
+        let game = try GameRegistration.register(title: "Cirulla",
+                                                 finalScores: [.init(competitor: .player(alice), points: -5),
+                                                               .init(competitor: .player(bob), points: 0)],
+                                                 playedAt: .now,
+                                                 locationName: nil,
+                                                 in: context)
+
+        let scores = game.rankedParticipants.map(\.totalScore)
+        #expect(scores == [0, -5])   // stored verbatim, ranked highest-first
+    }
+
+    @Test func registeredGameOrdersByPlayedDateInHistory() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+
+        let fresh = Game(title: "Today's game")
+        context.insert(fresh)
+
+        let yearAgo = Date.now.addingTimeInterval(-365 * 24 * 3600)
+        try GameRegistration.register(title: "Last year's game",
+                                      finalScores: [.init(competitor: .player(alice), points: 21),
+                                                    .init(competitor: .player(bob), points: 15)],
+                                      playedAt: yearAgo,
+                                      locationName: nil,
+                                      in: context)
+
+        // Same sort the Games tab uses: createdAt, newest first.
+        let games = try context.fetch(FetchDescriptor<Game>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)]))
+        #expect(games.map(\.title) == ["Today's game", "Last year's game"])
+    }
+
+    @Test func registeredGameNormalizesLocation() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+
+        let scores: [GameRegistration.FinalScore] = [.init(competitor: .player(alice), points: 1),
+                                                     .init(competitor: .player(bob), points: 2)]
+
+        let blank = try GameRegistration.register(title: "A", finalScores: scores,
+                                                  playedAt: .now, locationName: "   ", in: context)
+        #expect(blank.locationName == nil)
+
+        let padded = try GameRegistration.register(title: "B", finalScores: scores,
+                                                   playedAt: .now, locationName: "  Nonna's house  ", in: context)
+        #expect(padded.locationName == "Nonna's house")
+    }
+
+    /// The selection semantics shared by New Game and Register Past Game:
+    /// team games and player games never mix, duplicates are ignored, and
+    /// toggling an existing selection removes it.
+    @Test func competitorSelectionRulesEnforceTeamExclusivity() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        let team = Team(name: "The Aces")
+        [alice, bob].forEach(context.insert)
+        context.insert(team)
+
+        var selection: [GameCompetitor] = []
+        selection = CompetitorSelectionRules.toggling(.player(alice), in: selection)
+        selection = CompetitorSelectionRules.toggling(.player(bob), in: selection)
+        #expect(selection == [.player(alice), .player(bob)])
+
+        // Selecting a team turns this into a team game: players are dropped.
+        selection = CompetitorSelectionRules.toggling(.team(team), in: selection)
+        #expect(selection == [.team(team)])
+
+        // Adding an already-selected competitor is a no-op.
+        selection = CompetitorSelectionRules.adding(.team(team), to: selection)
+        #expect(selection == [.team(team)])
+
+        // Toggling an existing selection removes it.
+        selection = CompetitorSelectionRules.toggling(.team(team), in: selection)
+        #expect(selection.isEmpty)
+    }
 }

@@ -22,10 +22,6 @@ struct NewGameView: View {
     /// the caller can navigate straight into its scoreboard.
     var onStart: (Game) -> Void = { _ in }
 
-    @Query(sort: \Player.name) private var players: [Player]
-    @Query(sort: \Team.name) private var teams: [Team]
-    @Query(sort: \GameName.name) private var gameNames: [GameName]
-
     @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
     /// Set once the existing games have been mined for their distinct names, so
     /// the one-time seeding never repeats.
@@ -55,7 +51,9 @@ struct NewGameView: View {
     var body: some View {
         NavigationStack {
             Form {
-                gameNameSection
+                GameNameSection(selectedGameName: $selectedGameName) {
+                    isAddingGameName = true
+                }
 
                 Section {
                     Toggle("Play to a target score", isOn: $hasTarget.animation())
@@ -74,8 +72,9 @@ struct NewGameView: View {
                          : "Open-ended: just track running totals (e.g. Briscola).")
                 }
 
-                playersSection
-                teamsSection
+                CompetitorSelectionSections(selectedCompetitors: $selectedCompetitors,
+                                            onAddPlayer: { isAddingPlayer = true },
+                                            onAddTeam: { isAddingTeam = true })
 
                 if !selectedCompetitors.isEmpty {
                     Section("Playing") {
@@ -112,12 +111,12 @@ struct NewGameView: View {
             }
             .sheet(isPresented: $isAddingPlayer) {
                 PlayerEditView(player: nil) { newPlayer in
-                    select(.player(newPlayer))
+                    selectedCompetitors = CompetitorSelectionRules.adding(.player(newPlayer), to: selectedCompetitors)
                 }
             }
             .sheet(isPresented: $isAddingTeam) {
                 TeamEditView(team: nil) { newTeam in
-                    select(.team(newTeam))
+                    selectedCompetitors = CompetitorSelectionRules.adding(.team(newTeam), to: selectedCompetitors)
                 }
             }
             .sheet(isPresented: $isAddingGameName) {
@@ -126,192 +125,13 @@ struct NewGameView: View {
                 }
             }
             .onAppear { locationManager.requestAuthorizationIfNeeded() }
-            .task { prepareGameNames() }
-        }
-    }
-
-    // MARK: - Game name
-
-    @ViewBuilder
-    private var gameNameSection: some View {
-        Section {
-            if gameNames.isEmpty {
-                Text("No game names yet. Add one to get started.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(gameNames) { gameName in
-                    gameNameRow(gameName)
-                }
-                .onDelete(perform: deleteGameNames)
-            }
-            Button { isAddingGameName = true } label: {
-                Label("New Game Name", systemImage: "plus")
-            }
-        } header: {
-            Text("Game")
-        } footer: {
-            Text("Pick the game you're playing, or add a new one. The last name you used is selected by default.")
-        }
-    }
-
-    private func gameNameRow(_ gameName: GameName) -> some View {
-        Button {
-            selectedGameName = gameName
-        } label: {
-            HStack {
-                Image(systemName: "suit.club.fill").foregroundStyle(.tint)
-                Text(gameName.name).foregroundStyle(.primary)
-                Spacer()
-                if selectedGameName?.persistentModelID == gameName.persistentModelID {
-                    Image(systemName: "checkmark").foregroundStyle(.tint)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func deleteGameNames(at offsets: IndexSet) {
-        for index in offsets {
-            let gameName = gameNames[index]
-            if selectedGameName?.persistentModelID == gameName.persistentModelID {
-                selectedGameName = nil
-            }
-            modelContext.delete(gameName)
-        }
-    }
-
-    /// Seed the name list from existing games the first time ever, then
-    /// pre-select the most recently used name. Runs each time the sheet opens so
-    /// the default reflects the latest "last used"; the seeding itself is one-off.
-    private func prepareGameNames() {
-        if !hasSeededGameNames {
-            GameName.seedFromExistingGames(context: modelContext)
-            hasSeededGameNames = true
-        }
-        guard selectedGameName == nil else { return }
-        let all = (try? modelContext.fetch(FetchDescriptor<GameName>())) ?? []
-        selectedGameName = GameNamePicker.defaultSelection(all, lastUsed: { $0.lastUsedAt }, name: { $0.name })
-    }
-
-    /// True once any team is selected. A game is between teams OR between
-    /// individual players — never a mix — so selecting a team turns this into a
-    /// team game and the players list is hidden.
-    private var isTeamGame: Bool {
-        selectedCompetitors.contains { if case .team = $0 { return true } else { return false } }
-    }
-
-    @ViewBuilder
-    private var playersSection: some View {
-        if isTeamGame {
-            // Hidden: this is a team game, so individual players don't apply.
-            EmptyView()
-        } else if showsMostUsedPlayers {
-            Section("Most Used Players") {
-                ForEach(frequentPlayers) { player in
-                    selectableRow(for: .player(player), systemImage: "person.circle.fill")
-                }
-            }
-            Section("All Players") {
-                ForEach(otherPlayers) { player in
-                    selectableRow(for: .player(player), systemImage: "person.circle.fill")
-                }
-                newPlayerButton
-            }
-        } else {
-            Section("Players") {
-                ForEach(players) { player in
-                    selectableRow(for: .player(player), systemImage: "person.circle.fill")
-                }
-                newPlayerButton
+            .task {
+                guard selectedGameName == nil else { return }
+                var seeded = hasSeededGameNames
+                selectedGameName = GameNameSection.prepareSelection(in: modelContext, hasSeededGameNames: &seeded)
+                hasSeededGameNames = seeded
             }
         }
-    }
-
-    @ViewBuilder
-    private var teamsSection: some View {
-        if showsMostUsedTeams {
-            Section("Most Used Teams") {
-                ForEach(frequentTeams) { team in
-                    selectableRow(for: .team(team), subtitle: team.rosterSummary, systemImage: "person.2.circle.fill")
-                }
-            }
-            Section("All Teams") {
-                ForEach(otherTeams) { team in
-                    selectableRow(for: .team(team), subtitle: team.rosterSummary, systemImage: "person.2.circle.fill")
-                }
-                newTeamButton
-            }
-        } else {
-            Section("Teams") {
-                ForEach(teams) { team in
-                    selectableRow(for: .team(team), subtitle: team.rosterSummary, systemImage: "person.2.circle.fill")
-                }
-                newTeamButton
-            }
-        }
-    }
-
-    private var newPlayerButton: some View {
-        Button { isAddingPlayer = true } label: { Label("New Player", systemImage: "plus") }
-    }
-
-    private var newTeamButton: some View {
-        Button { isAddingTeam = true } label: { Label("New Team", systemImage: "plus") }
-    }
-
-    // MARK: - Most-used ranking
-
-    /// Top players by number of games played; shown above the full list.
-    private var frequentPlayers: [Player] {
-        FrequentPicker.top(players, usage: { $0.usageCount }, name: { $0.name })
-    }
-
-    /// Players not in the "most used" set, kept in the @Query's alphabetical order.
-    private var otherPlayers: [Player] {
-        let ids = Set(frequentPlayers.map(\.persistentModelID))
-        return players.filter { !ids.contains($0.persistentModelID) }
-    }
-
-    /// Only split into Most Used + All when it actually helps (there are extras).
-    private var showsMostUsedPlayers: Bool {
-        !frequentPlayers.isEmpty && !otherPlayers.isEmpty
-    }
-
-    private var frequentTeams: [Team] {
-        FrequentPicker.top(teams, usage: { $0.usageCount }, name: { $0.name })
-    }
-
-    private var otherTeams: [Team] {
-        let ids = Set(frequentTeams.map(\.persistentModelID))
-        return teams.filter { !ids.contains($0.persistentModelID) }
-    }
-
-    private var showsMostUsedTeams: Bool {
-        !frequentTeams.isEmpty && !otherTeams.isEmpty
-    }
-
-    private func selectableRow(for competitor: GameCompetitor, subtitle: String? = nil, systemImage: String) -> some View {
-        Button {
-            toggle(competitor)
-        } label: {
-            HStack {
-                Image(systemName: systemImage).foregroundStyle(.tint)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(competitor.name).foregroundStyle(.primary)
-                    if let subtitle {
-                        Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                if isSelected(competitor) {
-                    Image(systemName: "checkmark").foregroundStyle(.tint)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder

@@ -155,6 +155,29 @@ data class ScoreEntryEntity(
     val timestamp: Instant,
 )
 
+// One correction made to a closed game's scores. The user must type a reason
+// before an edit can start, and that reason is kept here rather than discarded:
+// a finished game's result is a record, so any change to it stays accountable.
+// gameId FK cascades; index gameId.
+@Entity(
+    tableName = "game_edits",
+    foreignKeys = [
+        ForeignKey(
+            entity = GameEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["gameId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("gameId")],
+)
+data class GameEditEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val gameId: Long,
+    val reason: String,
+    val editedAt: Instant,
+)
+
 // One place at the table in a game, occupied by an individual player. Seats are
 // ordered counter-clockwise starting from the first dealer (position 0), so the
 // dealer for each successive hand is just the next seat around. Dealers are

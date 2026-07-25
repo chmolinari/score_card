@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Remove
@@ -62,6 +63,7 @@ import com.christianmolinari.scorecard.data.db.ParticipantWithDetails
 import com.christianmolinari.scorecard.data.db.ScoreEntryEntity
 import com.christianmolinari.scorecard.domain.NegativeScores
 import com.christianmolinari.scorecard.domain.displayName
+import com.christianmolinari.scorecard.domain.isEdited
 import com.christianmolinari.scorecard.domain.isOpen
 import com.christianmolinari.scorecard.domain.sortedEntries
 import com.christianmolinari.scorecard.domain.subtitle
@@ -125,6 +127,11 @@ fun GameInfoSection(game: GameWithDetails) {
                     InfoChip(text = "First to $target", icon = Icons.Filled.Flag, tint = ThemeColors.sky)
                 } else {
                     InfoChip(text = "Open-ended", icon = Icons.Filled.AllInclusive, tint = ThemeColors.sky)
+                }
+                // Mirrors the card badge in the games list: a corrected result
+                // must be recognizable as one wherever the game is shown.
+                if (game.isEdited) {
+                    InfoChip(text = "Edited", icon = Icons.Filled.Edit, tint = ThemeColors.plum)
                 }
             }
 

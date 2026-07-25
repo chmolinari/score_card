@@ -5,6 +5,7 @@ import com.christianmolinari.scorecard.data.backup.BackupException
 import com.christianmolinari.scorecard.data.backup.BackupSnapshot
 import com.christianmolinari.scorecard.data.backup.EntryDTO
 import com.christianmolinari.scorecard.data.backup.GameDTO
+import com.christianmolinari.scorecard.data.backup.GameEditDTO
 import com.christianmolinari.scorecard.data.backup.GameNameDTO
 import com.christianmolinari.scorecard.data.backup.ParticipantDTO
 import com.christianmolinari.scorecard.data.backup.PlayerDTO
@@ -73,6 +74,17 @@ class BackupJsonTest {
                 ),
                 currentDealerIndex = 1,
                 currentHand = 3,
+                // Newest first, the order both platforms write.
+                edits = listOf(
+                    GameEditDTO(
+                        reason = "Miscounted the last scopa",
+                        editedAt = Instant.parse("2026-06-02T09:00:00Z"),
+                    ),
+                    GameEditDTO(
+                        reason = "Swapped the primiera",
+                        editedAt = Instant.parse("2026-06-01T19:00:00Z"),
+                    ),
+                ),
             ),
         ),
         gameNames = listOf(
@@ -101,6 +113,40 @@ class BackupJsonTest {
         // equality check covers players, teams, games, participants, entries,
         // seats, dealer state, and game names.
         assertEquals(snapshot, decoded)
+    }
+
+    // Editing arrived after this format shipped, and the field was added as an
+    // optional rather than bumping the version — so a backup written by any
+    // earlier build (or by an iOS build predating the feature) must still load.
+    @Test
+    fun gameDecodesFromABackupWrittenWithoutEdits() {
+        val json = """
+            {
+              "version": 1,
+              "exportedAt": "2026-06-01T18:30:00Z",
+              "players": [{ "name": "Alice", "createdAt": "2026-06-01T10:00:00Z" }],
+              "teams": [],
+              "games": [
+                {
+                  "title": "Briscola",
+                  "hasTarget": false,
+                  "createdAt": "2026-06-01T17:00:00Z",
+                  "closedAt": "2026-06-01T18:00:00Z",
+                  "participants": [
+                    { "nameSnapshot": "Alice", "sortIndex": 0, "playerIndex": 0, "entries": [] }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val decoded = BackupCodec.decode(json)
+
+        val game = decoded.games.single()
+        assertNull(game.edits)
+        // The other back-compat optionals still behave the same way.
+        assertNull(game.seats)
+        assertNull(game.currentHand)
     }
 
     @Test

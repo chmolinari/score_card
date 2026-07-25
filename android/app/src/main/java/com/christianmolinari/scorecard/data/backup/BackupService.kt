@@ -5,6 +5,7 @@
 package com.christianmolinari.scorecard.data.backup
 
 import androidx.room.withTransaction
+import com.christianmolinari.scorecard.data.db.GameEditEntity
 import com.christianmolinari.scorecard.data.db.GameEntity
 import com.christianmolinari.scorecard.data.db.GameNameEntity
 import com.christianmolinari.scorecard.data.db.ParticipantEntity
@@ -15,6 +16,7 @@ import com.christianmolinari.scorecard.data.db.SeatEntity
 import com.christianmolinari.scorecard.data.db.TeamEntity
 import com.christianmolinari.scorecard.data.db.TeamMemberCrossRef
 import com.christianmolinari.scorecard.domain.displayName
+import com.christianmolinari.scorecard.domain.sortedEdits
 import java.time.Instant
 
 class BackupService(private val database: ScoreCardDatabase) {
@@ -77,6 +79,10 @@ class BackupService(private val database: ScoreCardDatabase) {
                         },
                     currentDealerIndex = game.game.currentDealerIndex,
                     currentHand = game.game.currentHand,
+                    // Newest first, matching what iOS writes from sortedEdits.
+                    edits = game.sortedEdits.map {
+                        GameEditDTO(reason = it.reason, editedAt = it.editedAt)
+                    },
                 )
             },
             gameNames = gameNames.map {
@@ -164,6 +170,16 @@ class BackupService(private val database: ScoreCardDatabase) {
                             gameId = gameId,
                             playerId = sdto.playerIndex?.let { playerIds.getOrNull(it) },
                             position = sdto.position,
+                        )
+                    )
+                }
+
+                for (edto in dto.edits.orEmpty()) {
+                    database.gameDao().insertGameEdit(
+                        GameEditEntity(
+                            gameId = gameId,
+                            reason = edto.reason,
+                            editedAt = edto.editedAt,
                         )
                     )
                 }

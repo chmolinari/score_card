@@ -102,6 +102,9 @@ enum BackupService {
                 BackupSnapshot.SeatDTO(position: seat.position,
                                        playerIndex: seat.player.flatMap { playerIndex[$0.persistentModelID] })
             }
+            let edits = game.sortedEdits.map { edit in
+                BackupSnapshot.GameEditDTO(reason: edit.reason, editedAt: edit.editedAt)
+            }
             return .init(title: game.title,
                          hasTarget: game.hasTarget,
                          targetPoints: game.targetPoints,
@@ -113,7 +116,8 @@ enum BackupService {
                          participants: participants,
                          seats: seats,
                          currentDealerIndex: game.currentDealerIndex,
-                         currentHand: game.currentHand)
+                         currentHand: game.currentHand,
+                         edits: edits)
         }
         return snapshot
     }
@@ -187,6 +191,12 @@ enum BackupService {
                 seat.game = game
                 context.insert(seat)
             }
+            for edto in dto.edits ?? [] {
+                let edit = GameEdit(reason: edto.reason, editedAt: edto.editedAt)
+                edit.game = game
+                context.insert(edit)
+            }
+
             game.currentDealerIndex = dto.currentDealerIndex ?? 0
             game.currentHand = dto.currentHand ?? 1
         }

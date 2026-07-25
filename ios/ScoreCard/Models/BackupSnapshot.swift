@@ -56,6 +56,15 @@ struct BackupSnapshot: Codable {
         var currentDealerIndex: Int?
         // Optional so backups written before the hand counter still decode.
         var currentHand: Int?
+        // Optional so backups written before closed games could be edited still
+        // decode (and so older app versions, which ignore unknown keys, can still
+        // restore newer backups — hence the format version is left unchanged).
+        var edits: [GameEditDTO]?
+    }
+
+    struct GameEditDTO: Codable {
+        var reason: String
+        var editedAt: Date
     }
 
     struct SeatDTO: Codable {

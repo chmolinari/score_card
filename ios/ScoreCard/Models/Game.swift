@@ -40,6 +40,12 @@ final class Game {
     @Relationship(deleteRule: .cascade, inverse: \Seat.game)
     var seats: [Seat]? = []
 
+    // Corrections made to this game's scores after it was closed, each with the
+    // reason the user gave. Kept as a log (never overwritten) so the result of a
+    // finished game can be seen to have been changed, and why.
+    @Relationship(deleteRule: .cascade, inverse: \GameEdit.game)
+    var edits: [GameEdit]? = []
+
     // Which seat is dealing the current hand (manche). Index into `orderedSeats`.
     var currentDealerIndex: Int = 0
 
@@ -171,6 +177,18 @@ final class Game {
         let index = ((currentDealerIndex + offset) % count + count) % count
         return seats[index].player
     }
+
+    /// Whether this game's scores have been corrected since it was closed. Drives
+    /// the "Edited" badge on the game card and detail header.
+    var isEdited: Bool { !(edits ?? []).isEmpty }
+
+    /// Edits newest-first, for the edit-history list.
+    var sortedEdits: [GameEdit] {
+        (edits ?? []).sorted { $0.editedAt > $1.editedAt }
+    }
+
+    /// When the game was last edited, or nil if it never was.
+    var lastEditedAt: Date? { sortedEdits.first?.editedAt }
 
     /// CoreLocation coordinate reconstructed from the stored components.
     var coordinate: CLLocationCoordinate2D? {

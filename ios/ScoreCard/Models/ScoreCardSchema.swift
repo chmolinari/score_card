@@ -19,5 +19,6 @@ enum ScoreCardSchema {
         GameParticipant.self,
         ScoreEntry.self,
         Seat.self,
+        GameEdit.self,
     ]
 }

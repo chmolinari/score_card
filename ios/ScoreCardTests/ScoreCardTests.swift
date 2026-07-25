@@ -988,4 +988,235 @@ struct ScoreCardTests {
         selection = CompetitorSelectionRules.toggling(.team(team), in: selection)
         #expect(selection.isEmpty)
     }
+
+    // MARK: - Editing a closed game
+
+    /// The below-zero preference applies to an edited total exactly as it does to
+    /// live scoring: off, nothing lands under zero; on, negatives pass through.
+    @Test func editedTotalHonorsBelowZeroPolicy() {
+        // Clamping (default): anything negative lands on zero instead.
+        #expect(GameScoreEdit.normalizedTotal(-1, allowNegative: false) == 0)
+        #expect(GameScoreEdit.normalizedTotal(-40, allowNegative: false) == 0)
+        #expect(GameScoreEdit.normalizedTotal(0, allowNegative: false) == 0)
+
+        // Allowed: stored verbatim, sign and all.
+        #expect(GameScoreEdit.normalizedTotal(-1, allowNegative: true) == -1)
+        #expect(GameScoreEdit.normalizedTotal(-40, allowNegative: true) == -40)
+
+        // Positives are never touched, whatever the policy.
+        #expect(GameScoreEdit.normalizedTotal(21, allowNegative: false) == 21)
+        #expect(GameScoreEdit.normalizedTotal(21, allowNegative: true) == 21)
+    }
+
+    /// A total is the sum of its entries, so an edit is applied by appending one
+    /// more entry — this is the value that entry has to carry.
+    @Test func editDeltaMovesATotalInBothDirections() {
+        #expect(GameScoreEdit.delta(from: 10, to: 15) == 5)      // raising
+        #expect(GameScoreEdit.delta(from: 15, to: 10) == -5)     // lowering
+        #expect(GameScoreEdit.delta(from: 10, to: 10) == 0)      // unchanged
+        #expect(GameScoreEdit.delta(from: -3, to: 4) == 7)       // across zero
+        #expect(GameScoreEdit.delta(from: 0, to: -6) == -6)
+    }
+
+    /// Requirement: a game counts as edited only when the final score actually
+    /// differs from the one it had before.
+    @Test func editIsDetectedOnlyWhenATotalDiffers() {
+        #expect(GameScoreEdit.isChanged(before: [11, 7], after: [11, 7]) == false)
+        #expect(GameScoreEdit.isChanged(before: [], after: []) == false)
+
+        #expect(GameScoreEdit.isChanged(before: [11, 7], after: [12, 7]))   // first moved
+        #expect(GameScoreEdit.isChanged(before: [11, 7], after: [11, 8]))   // second moved
+        #expect(GameScoreEdit.isChanged(before: [11, 7], after: [8, 12]))   // both moved
+    }
+
+    /// Replicates what `GameEditView.save()` commits: one delta entry per changed
+    /// competitor, one `GameEdit` carrying the motivation, and a game that stays
+    /// closed.
+    @Test func editingClosedGameCorrectsScoresAndRecordsTheReason() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+
+        let game = Game(title: "Scopa")
+        context.insert(game)
+        let pa = GameParticipant(player: alice, sortIndex: 0); pa.game = game; context.insert(pa)
+        let pb = GameParticipant(player: bob, sortIndex: 1); pb.game = game; context.insert(pb)
+        addPoints(11, to: pa, in: context)
+        addPoints(7, to: pb, in: context)
+        let closedAt = Date(timeIntervalSince1970: 1_600_000_000)
+        game.closedAt = closedAt
+        try context.save()
+
+        // What the editor freezes when the sheet opens.
+        let participants = game.rankedParticipants
+        #expect(participants.map(\.totalScore) == [11, 7])
+        // Alice's 11 was really a 9; Bob's score is left alone.
+        let proposedTotals = [9, 7]
+
+        // Drives the very same commit the editor's Save button runs, so the two
+        // cannot drift apart while this test keeps passing.
+        let recorded = game.applyScoreEdit(reason: "Miscounted the last scopa",
+                                           proposedTotals: proposedTotals,
+                                           for: participants,
+                                           in: context)
+        #expect(recorded)
+        try context.save()
+
+        // The appended entry lands the total exactly on the requested one.
+        #expect(participants.map(\.totalScore) == proposedTotals)
+        // History is appended to, never rewritten: Alice now has two entries.
+        #expect((participants[0].scoreEntries ?? []).count == 2)
+        #expect((participants[1].scoreEntries ?? []).count == 1)
+
+        #expect(game.isEdited)
+        #expect(game.sortedEdits.map(\.reason) == ["Miscounted the last scopa"])
+        #expect(game.lastEditedAt == game.sortedEdits.first?.editedAt)
+        // An edit corrects a finished game; it never reopens it.
+        #expect(game.closedAt == closedAt)
+        #expect(game.isOpen == false)
+    }
+
+    /// An unchanged game must come out of the editor with nothing persisted at
+    /// all — no score entry and no edit record.
+    @Test func editWithoutAChangeRecordsNothing() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+
+        let game = Game(title: "Briscola")
+        context.insert(game)
+        let pa = GameParticipant(player: alice, sortIndex: 0); pa.game = game; context.insert(pa)
+        let pb = GameParticipant(player: bob, sortIndex: 1); pb.game = game; context.insert(pb)
+        addPoints(61, to: pa, in: context)
+        addPoints(59, to: pb, in: context)
+        game.closedAt = .now
+        try context.save()
+
+        let entriesBefore = try context.fetch(FetchDescriptor<ScoreEntry>()).count
+        let participants = game.rankedParticipants
+
+        // The user typed a reason, then either changed nothing or changed a
+        // total and put it back. Both reach the commit with totals matching the
+        // current ones, and the commit itself — not just the disabled Save
+        // button — has to refuse them.
+        let recorded = game.applyScoreEdit(reason: "Should never be recorded",
+                                           proposedTotals: [61, 59],
+                                           for: participants,
+                                           in: context)
+        #expect(recorded == false)
+        try context.save()
+
+        #expect(try context.fetch(FetchDescriptor<ScoreEntry>()).count == entriesBefore)
+        #expect(try context.fetch(FetchDescriptor<GameEdit>()).isEmpty)
+        #expect(game.isEdited == false)
+        #expect(game.lastEditedAt == nil)
+        #expect(participants.map(\.totalScore) == [61, 59])
+    }
+
+    /// A totals list that doesn't line up with the competitors is refused rather
+    /// than applied, so a correction can never land on the wrong competitor.
+    @Test func editWithMismatchedTotalsIsRefused() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        context.insert(alice)
+
+        let game = Game(title: "Scopa")
+        context.insert(game)
+        let pa = GameParticipant(player: alice, sortIndex: 0); pa.game = game; context.insert(pa)
+        addPoints(11, to: pa, in: context)
+        game.closedAt = .now
+        try context.save()
+
+        let recorded = game.applyScoreEdit(reason: "Two totals, one competitor",
+                                           proposedTotals: [9, 4],
+                                           for: game.rankedParticipants,
+                                           in: context)
+        #expect(recorded == false)
+        #expect(game.isEdited == false)
+        #expect(pa.totalScore == 11)
+    }
+
+    /// The edit-history list shows the most recent correction first.
+    @Test func editHistoryIsOrderedNewestFirst() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let game = Game(title: "Scopa")
+        game.closedAt = Date(timeIntervalSince1970: 1_000)
+        context.insert(game)
+
+        // Inserted out of order on purpose.
+        let middle = GameEdit(reason: "Second", editedAt: Date(timeIntervalSince1970: 2_000))
+        let oldest = GameEdit(reason: "First", editedAt: Date(timeIntervalSince1970: 1_000))
+        let newest = GameEdit(reason: "Third", editedAt: Date(timeIntervalSince1970: 3_000))
+        for edit in [middle, oldest, newest] {
+            edit.game = game
+            context.insert(edit)
+        }
+        try context.save()
+
+        #expect(game.sortedEdits.map(\.reason) == ["Third", "Second", "First"])
+        #expect(game.lastEditedAt == Date(timeIntervalSince1970: 3_000))
+    }
+
+    @Test func backupRoundTripIncludesGameEdits() throws {
+        let sourceContainer = try makeContainer()
+        let source = sourceContainer.mainContext
+        let alice = Player(name: "Alice")
+        source.insert(alice)
+        let game = Game(title: "Scopa")
+        game.closedAt = Date(timeIntervalSince1970: 1_500_000_000)
+        source.insert(game)
+        let pa = GameParticipant(player: alice, sortIndex: 0); pa.game = game; source.insert(pa)
+        addPoints(9, to: pa, in: source)
+
+        let firstEditedAt = Date(timeIntervalSince1970: 1_600_000_000)
+        let secondEditedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let first = GameEdit(reason: "Miscounted the last scopa", editedAt: firstEditedAt)
+        let second = GameEdit(reason: "Forgot the settebello", editedAt: secondEditedAt)
+        for edit in [first, second] { edit.game = game; source.insert(edit) }
+        try source.save()
+
+        let data = try BackupService.exportData(from: source)
+        let destContainer = try makeContainer()
+        let dest = destContainer.mainContext
+        try BackupService.restore(BackupService.decodeSnapshot(data), into: dest)
+
+        let restored = try #require(try dest.fetch(FetchDescriptor<Game>()).first)
+        #expect(restored.isEdited)
+        #expect(restored.sortedEdits.map(\.reason) == ["Forgot the settebello", "Miscounted the last scopa"])
+        #expect(restored.sortedEdits.map(\.editedAt) == [secondEditedAt, firstEditedAt])
+        // The edit log rides along with the game, not instead of its scores.
+        #expect(restored.rankedParticipants.map(\.totalScore) == [9])
+    }
+
+    /// `edits` is optional precisely so a backup written before closed games could
+    /// be edited still restores.
+    @Test func gameDecodesFromABackupWrittenWithoutEdits() throws {
+        let json = """
+        {
+          "title": "Scopa",
+          "hasTarget": true,
+          "targetPoints": 11,
+          "createdAt": "2024-06-14T18:45:00Z",
+          "closedAt": "2024-06-14T19:30:00Z",
+          "participants": []
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let dto = try decoder.decode(BackupSnapshot.GameDTO.self, from: Data(json.utf8))
+
+        #expect(dto.title == "Scopa")
+        #expect(dto.targetPoints == 11)
+        #expect(dto.edits == nil)   // absent key, not a failure
+        // The other back-compat optionals stay nil too, so restore falls back.
+        #expect(dto.seats == nil)
+        #expect(dto.currentDealerIndex == nil)
+        #expect(dto.currentHand == nil)
+    }
 }

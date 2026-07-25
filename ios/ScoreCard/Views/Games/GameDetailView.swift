@@ -2,8 +2,8 @@
 //  GameDetailView.swift
 //  ScoreCard
 //
-//  Read-only history detail for a finished game: final standings, metadata, and
-//  an optional map of where it was played.
+//  History detail for a finished game: final standings, metadata, an optional
+//  map of where it was played, and the log of any score corrections made to it.
 //
 
 import SwiftUI
@@ -13,8 +13,18 @@ import MapKit
 struct GameDetailView: View {
     let game: Game
 
+    @State private var isEditingScores = false
+    /// Bumped when the editor closes. Correcting a score mutates the entries
+    /// through their inverse relationship, which SwiftData does not reliably
+    /// report to this view (same problem as `GameScoreboardView.scoreRevision`),
+    /// so the standings are invalidated explicitly instead.
+    @State private var editRevision = 0
+
     var body: some View {
-        List {
+        // Establishes the per-render dependency on the editor's mutations.
+        _ = editRevision
+
+        return List {
             Section(game.isDraw ? "Final Standings · Draw" : "Final Standings") {
                 ForEach(Array(game.rankedParticipants.enumerated()), id: \.element.persistentModelID) { index, participant in
                     HStack(spacing: 12) {
@@ -46,9 +56,39 @@ struct GameDetailView: View {
             Section("Details") {
                 GameInfoHeader(game: game)
             }
+
+            // The reason for every correction is recorded, not discarded: this
+            // is why the editor insists on one before it starts.
+            if game.isEdited {
+                Section("Edit History") {
+                    ForEach(game.sortedEdits, id: \.persistentModelID) { edit in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(edit.reason)
+                                .font(.subheadline)
+                            Text(GameFormatting.dateTime(edit.editedAt))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
         }
         .navigationTitle(game.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isEditingScores = true
+                } label: {
+                    Label("Edit Scores", systemImage: "pencil")
+                }
+                .accessibilityIdentifier("editGameButton")
+            }
+        }
+        .sheet(isPresented: $isEditingScores, onDismiss: { editRevision += 1 }) {
+            GameEditView(game: game)
+        }
     }
 
     /// IDs of the competitor(s) sharing the top score, so a tie can mark every

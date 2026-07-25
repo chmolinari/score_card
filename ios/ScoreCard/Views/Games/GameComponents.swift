@@ -39,6 +39,11 @@ struct GameInfoHeader: View {
                 } else {
                     chip(text: "Open-ended", systemImage: "infinity", tint: .blue)
                 }
+                // Mirrors the card badge in the games list: a corrected result
+                // must be recognizable as one wherever the game is shown.
+                if game.isEdited {
+                    chip(text: "Edited", systemImage: "pencil", tint: Theme.sky)
+                }
             }
 
             Label(GameFormatting.dateTime(game.createdAt), systemImage: "calendar")

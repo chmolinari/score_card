@@ -139,6 +139,7 @@ private struct GameRow: View {
                     Text(game.title)
                         .font(.headline)
                     Spacer()
+                    if game.isEdited { editedBadge }
                     statusBadge
                 }
 
@@ -166,10 +167,14 @@ private struct GameRow: View {
 
     @ViewBuilder
     private var statusBadge: some View {
+        // Every label is single-lined: sharing the title row with the "Edited"
+        // badge leaves little width, and a long winner name would otherwise wrap
+        // and break the card's layout.
         if game.isOpen {
             Label("Live", systemImage: "dot.radiowaves.left.and.right")
                 .labelStyle(.titleAndIcon)
                 .font(.caption2.bold())
+                .lineLimit(1)
                 .foregroundStyle(Theme.teal)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
@@ -178,6 +183,7 @@ private struct GameRow: View {
             Label("Draw", systemImage: "equal.circle.fill")
                 .labelStyle(.titleAndIcon)
                 .font(.caption2.bold())
+                .lineLimit(1)
                 .foregroundStyle(Theme.plum)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
@@ -186,11 +192,27 @@ private struct GameRow: View {
             Label(leader.displayName, systemImage: "trophy.fill")
                 .labelStyle(.titleAndIcon)
                 .font(.caption2.bold())
+                .lineLimit(1)
                 .foregroundStyle(Theme.amber)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(Theme.amber.opacity(0.15), in: Capsule())
         }
+    }
+
+    /// Marks a game whose scores were corrected after it was closed. Sky reads
+    /// as informational next to the teal/plum/amber result badges.
+    private var editedBadge: some View {
+        Label("Edited", systemImage: "pencil")
+            .labelStyle(.titleAndIcon)
+            .font(.caption2.bold())
+            .lineLimit(1)
+            .foregroundStyle(Theme.sky)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Theme.sky.opacity(0.15), in: Capsule())
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("editedBadge")
     }
 
     private var scoreSummary: String {

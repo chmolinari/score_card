@@ -46,7 +46,8 @@ struct GameInfoHeader: View {
                 }
             }
 
-            Label(GameFormatting.dateTime(game.createdAt), systemImage: "calendar")
+            Label(GameFormatting.dateTime(game.createdAt, dateOnly: game.playedDateOnly),
+                  systemImage: "calendar")
                 .font(.subheadline)
 
             if let place = displayAddress {

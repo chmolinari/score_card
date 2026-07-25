@@ -38,7 +38,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,14 +58,11 @@ import com.christianmolinari.scorecard.domain.subtitle
 import com.christianmolinari.scorecard.domain.totalScore
 import com.christianmolinari.scorecard.ui.components.AppBackground
 import com.christianmolinari.scorecard.ui.components.CardTile
+import com.christianmolinari.scorecard.ui.components.IntListStateSaver
 import com.christianmolinari.scorecard.ui.components.PlayfulSectionHeader
+import com.christianmolinari.scorecard.ui.components.StringListStateSaver
 import kotlinx.coroutines.launch
 import java.time.Instant
-
-// rememberSaveable's default saver can't carry a List, so these flatten the two
-// index-parallel score lists into something the saved-instance Bundle accepts.
-private val IntListStateSaver = listSaver<List<Int>, Int>(save = { it }, restore = { it })
-private val StringListStateSaver = listSaver<List<String>, String>(save = { it }, restore = { it })
 
 @Composable
 fun GameEditScreen(

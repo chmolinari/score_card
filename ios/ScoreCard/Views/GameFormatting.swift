@@ -8,14 +8,19 @@
 import Foundation
 
 enum GameFormatting {
-    /// "1 Jun 2026 at 14:30" style stamp for a game's date + time. A date at
-    /// exactly midnight means "time unknown" (a game registered date-only is
-    /// filed at the start of its day), so no fabricated time is shown for it.
-    static func dateTime(_ date: Date) -> String {
-        if date == Calendar.current.startOfDay(for: date) {
-            return date.formatted(date: .abbreviated, time: .omitted)
-        }
-        return date.formatted(date: .abbreviated, time: .shortened)
+    /// "1 Jun 2026 at 14:30" style stamp for a game's date + time.
+    ///
+    /// `dateOnly` says whether the stamp's time of day is meaningful. Passing
+    /// nil (the default) falls back to inferring it from the stamp sitting at
+    /// the start of its local day — correct only for games recorded before
+    /// `Game.playedDateOnly` existed, since that inference breaks when the
+    /// device changes time zone and mistakes a deliberate midnight for
+    /// "no time given".
+    static func dateTime(_ date: Date, dateOnly: Bool? = nil) -> String {
+        let omitsTime = dateOnly ?? (date == Calendar.current.startOfDay(for: date))
+        return omitsTime
+            ? date.formatted(date: .abbreviated, time: .omitted)
+            : date.formatted(date: .abbreviated, time: .shortened)
     }
 
     /// Compact duration like "1h 12m" between two dates.

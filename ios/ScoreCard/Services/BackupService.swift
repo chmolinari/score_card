@@ -117,7 +117,8 @@ enum BackupService {
                          seats: seats,
                          currentDealerIndex: game.currentDealerIndex,
                          currentHand: game.currentHand,
-                         edits: edits)
+                         edits: edits,
+                         playedDateOnly: game.playedDateOnly)
         }
         return snapshot
     }
@@ -199,6 +200,7 @@ enum BackupService {
 
             game.currentDealerIndex = dto.currentDealerIndex ?? 0
             game.currentHand = dto.currentHand ?? 1
+            game.playedDateOnly = dto.playedDateOnly
         }
 
         try context.save()

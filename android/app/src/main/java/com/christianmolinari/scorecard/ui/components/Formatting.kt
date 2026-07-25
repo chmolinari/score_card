@@ -2,7 +2,6 @@ package com.christianmolinari.scorecard.ui.components
 
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -15,9 +14,27 @@ object GameFormatting {
     // wasn't set), so the time is omitted — live games are stamped with
     // millisecond precision and essentially never land on 00:00:00.000. The
     // zone parameter exists for tests; production callers use the default.
-    fun dateTime(instant: Instant, zone: ZoneId = ZoneId.systemDefault()): String {
+    // `dateOnly` says whether the stamp's time of day is meaningful. Passing null
+    // (the default) falls back to inferring it from the stamp sitting at the
+    // start of its local day — correct only for games recorded before
+    // GameEntity.playedDateOnly existed, since that inference breaks when the
+    // device changes time zone and mistakes a deliberate 00:00 for "no time".
+    fun dateTime(
+        instant: Instant,
+        zone: ZoneId = ZoneId.systemDefault(),
+        dateOnly: Boolean? = null,
+    ): String {
+        // Compared against the zone's actual start of day, not the literal
+        // LocalTime.MIDNIGHT: a date-only stamp is built with atStartOfDay,
+        // which skips forward over a daylight-saving gap, so on a transition
+        // day midnight does not exist and the marker would be missed — showing
+        // a time of day the user explicitly declined to give. iOS compares
+        // against Calendar.startOfDay for the same reason.
+        val zoned = instant.atZone(zone)
+        val isDateOnly = dateOnly
+            ?: (zoned.toLocalDate().atStartOfDay(zone).toInstant() == instant)
         val style =
-            if (instant.atZone(zone).toLocalTime() == LocalTime.MIDNIGHT) {
+            if (isDateOnly) {
                 DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
             } else {
                 DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)

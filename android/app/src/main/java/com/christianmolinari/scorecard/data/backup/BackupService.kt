@@ -78,6 +78,7 @@ class BackupService(private val database: ScoreCardDatabase) {
                     currentDealerIndex = game.game.currentDealerIndex,
                     currentHand = game.game.currentHand,
                     edits = BackupMapping.gameEdits(game),
+                    playedDateOnly = game.game.playedDateOnly,
                 )
             },
             gameNames = gameNames.map {
@@ -130,6 +131,7 @@ class BackupService(private val database: ScoreCardDatabase) {
                         locationName = dto.locationName,
                         currentDealerIndex = dto.currentDealerIndex ?: 0,
                         currentHand = dto.currentHand ?: 1,
+                        playedDateOnly = dto.playedDateOnly,
                     )
                 )
 

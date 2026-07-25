@@ -105,7 +105,16 @@ private struct RegisterGameDetailsView: View {
     let gameName: GameName?
     var onSaved: () -> Void
 
-    @State private var scores: [Int?]
+    // Backed by text and parsed per keystroke rather than by
+    // TextField(value:format:), which only writes its binding when the field
+    // gives up focus. "Save Game" is a navigation-bar button and tapping one
+    // does not resign a text field's focus first, so a commit-on-blur field
+    // leaves the button inert on the last score typed — and, once every field
+    // has committed once, saves a stale total for a score the user went back
+    // and corrected.
+    @State private var scoreTexts: [String]
+    /// Latches the commit — see `save()`.
+    @State private var isSaving = false
     @State private var hasDate = true
     @State private var hasTime = false
     @State private var playedAt = Date.now
@@ -115,10 +124,15 @@ private struct RegisterGameDetailsView: View {
         self.draft = draft
         self.gameName = gameName
         self.onSaved = onSaved
-        _scores = State(initialValue: Array(repeating: nil, count: draft.competitors.count))
+        _scoreTexts = State(initialValue: Array(repeating: "", count: draft.competitors.count))
     }
 
-    private var canSave: Bool { !scores.contains(nil) }
+    /// Each competitor's typed total, or nil while the field is empty or
+    /// half-typed ("-"). An unparseable or out-of-range entry stays nil rather
+    /// than trapping, so a huge paste simply leaves Save disabled.
+    private var scores: [Int?] { scoreTexts.map { Int($0) } }
+
+    private var canSave: Bool { !isSaving && !scores.contains(nil) }
 
     var body: some View {
         Form {
@@ -127,7 +141,7 @@ private struct RegisterGameDetailsView: View {
                     HStack {
                         Text(competitor.name)
                         Spacer()
-                        TextField("Score", value: $scores[index], format: .number)
+                        TextField("Score", text: $scoreTexts[index])
                             // The minus key only exists when below-zero totals
                             // are allowed; the plain number pad has none.
                             .keyboardType(allowNegativeScores ? .numbersAndPunctuation : .numberPad)
@@ -180,10 +194,18 @@ private struct RegisterGameDetailsView: View {
     }
 
     private func save() {
+        // Dismissal is animated and the button stays hittable while it plays,
+        // so without this a second tap would register the game twice.
+        guard !isSaving else { return }
+        isSaving = true
+
         let finalScores = zip(draft.competitors, scores).compactMap { competitor, points in
             points.map { GameRegistration.FinalScore(competitor: competitor, points: $0) }
         }
-        guard finalScores.count == draft.competitors.count else { return }
+        guard finalScores.count == draft.competitors.count else {
+            isSaving = false
+            return
+        }
 
         try? GameRegistration.register(title: draft.title,
                                        finalScores: finalScores,
@@ -191,6 +213,10 @@ private struct RegisterGameDetailsView: View {
                                                                              hasTime: hasTime,
                                                                              selection: playedAt),
                                        locationName: locationText,
+                                       // A date with no time is the only case
+                                       // whose time of day is unknown; with no
+                                       // date at all the stamp is "now".
+                                       playedDateOnly: hasDate && !hasTime,
                                        allowNegativeScores: allowNegativeScores,
                                        in: modelContext)
         // Remember this as the most recently used name so it pre-selects next time.

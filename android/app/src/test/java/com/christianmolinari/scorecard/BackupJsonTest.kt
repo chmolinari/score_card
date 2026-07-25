@@ -74,6 +74,7 @@ class BackupJsonTest {
                 ),
                 currentDealerIndex = 1,
                 currentHand = 3,
+                playedDateOnly = true,
                 // Listed newest-first here only because that is what a real
                 // export produces; this test pins the JSON shape, not the
                 // ordering (BackupMappingTest pins that).
@@ -146,6 +147,7 @@ class BackupJsonTest {
 
         val game = decoded.games.single()
         assertNull(game.edits)
+        assertNull(game.playedDateOnly)
         // The other back-compat optionals still behave the same way.
         assertNull(game.seats)
         assertNull(game.currentHand)

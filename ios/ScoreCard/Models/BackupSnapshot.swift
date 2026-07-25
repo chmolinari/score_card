@@ -60,6 +60,11 @@ struct BackupSnapshot: Codable {
         // decode (and so older app versions, which ignore unknown keys, can still
         // restore newer backups — hence the format version is left unchanged).
         var edits: [GameEditDTO]?
+        // Whether createdAt records a date whose time of day is unknown.
+        // Optional in both directions: absent means "recorded before the field
+        // existed", which readers fall back to inferring, so the format version
+        // is deliberately unchanged.
+        var playedDateOnly: Bool?
     }
 
     struct GameEditDTO: Codable {

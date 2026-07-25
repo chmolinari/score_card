@@ -211,15 +211,15 @@ fun ParticipantScoringSheet(
     val scope = rememberCoroutineScope()
     val gameDao = container.database.gameDao()
 
-    val allowNegativeScores by container.prefs.allowNegativeScores
-        .collectAsStateWithLifecycle(initialValue = false)
 
     var customAmount by remember { mutableIntStateOf(1) }
     val quickAmounts = listOf(1, 2, 3, 5, 10)
 
     // True when scores are clamped at zero and this participant has nothing left
     // to subtract — used to disable the subtract controls for clear feedback.
-    val subtractionBlocked = !allowNegativeScores && participant.totalScore <= 0
+    val allowNegativeScores by container.prefs.allowNegativeScores
+        .collectAsStateWithLifecycle(initialValue = false)
+    val subtractionBlocked = !allowNegativeScores && participant.totalScore <= NegativeScores.FLOOR
 
     fun add(points: Int) {
         // Clamp at zero unless the below-zero preference is on; an exhausted

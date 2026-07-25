@@ -130,7 +130,7 @@ struct ParticipantScoringSheet: View {
     /// True when scores are clamped at zero and this participant has nothing left
     /// to subtract — used to disable the subtract controls for clear feedback.
     private var subtractionBlocked: Bool {
-        !allowNegativeScores && participant.totalScore <= 0
+        !allowNegativeScores && participant.totalScore <= NegativeScores.floor
     }
 
     var body: some View {

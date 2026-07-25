@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
+    @AppStorage(NegativeScores.storageKey) private var allowNegativeScores = false
 
     @Query private var players: [Player]
     @Query private var teams: [Team]
@@ -21,7 +22,6 @@ struct SettingsView: View {
 
     @AppStorage(DealingDirection.storageKey) private var dealingDirection: DealingDirection = .counterClockwise
     @AppStorage(DrawDealingRule.storageKey) private var drawDealingRule: DrawDealingRule = .ask
-    @AppStorage(NegativeScores.storageKey) private var allowNegativeScores = false
 
     // Backup / reset state. (Restore lives in BackupListView.)
     @State private var isWorking = false
@@ -75,7 +75,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Scoring")
                 } footer: {
-                    Text("When off, subtracting points stops a player's total at zero. Turn on to allow negative scores.")
+                    Text("When off, a total stops at zero everywhere — subtracting, correcting a finished game, and registering a past one. Turn on for games that go negative, like Spades or Pinochle.")
                 }
 
                 Section("Your Data") {

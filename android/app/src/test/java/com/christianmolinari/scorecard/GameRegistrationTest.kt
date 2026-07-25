@@ -163,17 +163,28 @@ class GameRegistrationTest {
     }
 
     @Test
-    fun registeredGameAllowsNegativeAndZeroFinals() {
-        // Finals are a transcription of an existing result, so zero and
-        // negative totals are stored verbatim regardless of the below-zero
-        // preference (which only clamps live subtraction).
-        val game = registeredGame(
+    fun registeredGameFollowsTheBelowZeroPreference() {
+        // A transcribed total obeys the same preference as a played one, so
+        // registering defaults to clamping: the -5 lands on 0 and both
+        // competitors tie there.
+        val clamped = registeredGame(
             listOf(player(1, "Alice") to 0, player(2, "Bob") to -5)
         )
+        assertEquals(0, clamped.participants[0].totalScore)
+        assertEquals(0, clamped.participants[1].totalScore)
+        assertFalse(clamped.isSoleWinner(clamped.rankedParticipants[0]))
+        assertTrue(clamped.isDraw)
 
-        assertEquals(0, game.participants[0].totalScore)
-        assertEquals(-5, game.participants[1].totalScore)
-        assertTrue(game.isSoleWinner(game.rankedParticipants[0]))
+        // With below-zero allowed, the transcribed total is kept verbatim.
+        assertEquals(
+            -5,
+            GameRegistration.finalScoreEntry(
+                participantId = 1,
+                points = -5,
+                playedAt = playedAt,
+                allowNegativeScores = true,
+            ).points,
+        )
     }
 
     @Test

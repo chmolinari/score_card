@@ -17,11 +17,24 @@ object GameScoreEdit {
     // The total actually storable for a requested new total.
     //
     // The app-wide below-zero preference (see NegativeScores and
-    // docs/scoring-rules.md) applies to edits exactly as it does to live
+    // docs/scoring-rules.md) applies to corrections exactly as it does to live
     // scoring: with it off, a total can't be driven below zero, so anything
     // negative lands on zero instead.
     fun normalizedTotal(requested: Int, allowNegative: Boolean): Int =
-        if (allowNegative) requested else maxOf(requested, 0)
+        NegativeScores.clamped(requested, allowNegative)
+
+    // The total to propose for a field the user has typed into.
+    //
+    // The clamp belongs here and ONLY here: it must apply to a value the user
+    // supplied, never to a total merely read back out of the store. A game can
+    // legitimately hold a negative total (played while the preference was on);
+    // clamping it just because it was displayed would propose a change nobody
+    // made — arming Save with no input and rewriting a finished score.
+    //
+    // An empty or half-typed field ("", "-") falls back to the untouched
+    // original rather than to zero, so clearing a total never arms a save.
+    fun typedTotal(text: String, fallback: Int, allowNegative: Boolean): Int =
+        text.toIntOrNull()?.let { normalizedTotal(it, allowNegative) } ?: fallback
 
     // The score entry delta needed to move a competitor from one total to
     // another. A total is derived by summing the competitor's entries, so an

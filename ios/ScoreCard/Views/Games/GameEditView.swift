@@ -113,7 +113,9 @@ struct GameEditView: View {
                         }
                         Spacer(minLength: 8)
                         TextField("Total", text: totalText(at: index))
-                            .keyboardType(.numbersAndPunctuation)   // number pad has no minus key
+                            // The minus key only exists when below-zero
+                            // totals are allowed; the plain number pad has none.
+                            .keyboardType(allowNegativeScores ? .numbersAndPunctuation : .numberPad)
                             .multilineTextAlignment(.trailing)
                             .frame(maxWidth: 72)
                             .focused($focusedScore, equals: index)

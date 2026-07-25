@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -218,12 +219,21 @@ private fun GameRow(game: GameWithDetails, onClick: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    // Sky reads as informational next to the teal/plum/amber
-                    // result badges.
-                    if (game.isEdited) {
-                        StatusChip(text = "Edited", icon = Icons.Filled.Edit, color = ThemeColors.sky)
+                    // Bounded so two badges plus a long-named winner can't
+                    // squeeze the title toward zero width; the chips ellipsize
+                    // inside whatever they get.
+                    Row(
+                        modifier = Modifier.widthIn(max = 190.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        // Sky reads as informational next to the teal/plum/amber
+                        // result badges.
+                        if (game.isEdited) {
+                            StatusChip(text = "Edited", icon = Icons.Filled.Edit, color = ThemeColors.sky)
+                        }
+                        StatusBadge(game)
                     }
-                    StatusBadge(game)
                 }
 
                 Text(

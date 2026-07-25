@@ -40,6 +40,35 @@ class GameScoreEditTest {
         assertEquals(7, GameScoreEdit.normalizedTotal(7, allowNegative = true))
     }
 
+    // --- typedTotal: the clamp applies to typed values, never to stored ones ---
+
+    @Test
+    fun `a typed total is clamped but an untouched negative total is not`() {
+        // The user typing "-5" gets the clamp...
+        assertEquals(0, GameScoreEdit.typedTotal("-5", fallback = 12, allowNegative = false))
+        assertEquals(-5, GameScoreEdit.typedTotal("-5", fallback = 12, allowNegative = true))
+
+        // ...but a stored negative total is NOT a typed value. This is the
+        // regression guard: clamping a total merely read back out of the store
+        // proposes a change nobody made, which armed Save on arrival and rewrote
+        // a finished score to zero on the next tap.
+        val storedNegative = -3
+        val untouched = GameScoreEdit.isChanged(
+            before = listOf(12, storedNegative),
+            after = listOf(12, storedNegative),
+        )
+        assertFalse(untouched)
+    }
+
+    @Test
+    fun `an empty or half-typed field falls back to the untouched original`() {
+        assertEquals(12, GameScoreEdit.typedTotal("", fallback = 12, allowNegative = false))
+        assertEquals(12, GameScoreEdit.typedTotal("-", fallback = 12, allowNegative = false))
+        // Even when the original is itself negative, clearing the field must
+        // leave it exactly as it was rather than clamping it to zero.
+        assertEquals(-3, GameScoreEdit.typedTotal("", fallback = -3, allowNegative = false))
+    }
+
     // --- delta: the entry that moves a competitor to a new total ---
 
     @Test

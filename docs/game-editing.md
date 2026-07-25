@@ -51,11 +51,17 @@ captured when the editor opens and does not change while the user types —
 re-ranking rows under the cursor as a total is edited would be unusable. The same
 captured totals are the "before" side of every comparison below.
 
-Each row accepts a new **final total** (typed or stepped), not a delta. Negative
-totals are governed by the app-wide below-zero preference described in
-`docs/scoring-rules.md`: when that preference is off (the default) a proposed
-total below zero lands on zero instead, so a competitor at zero cannot be pushed
-lower; when it is on, the proposed total is taken verbatim.
+Each row accepts a new **final total** (typed or stepped), not a delta. Proposed
+totals obey the app-wide below-zero preference described in
+`docs/scoring-rules.md`: with it off (the default) a proposed total below zero
+lands on zero instead, so a competitor cannot be pushed below it; with it on, the
+proposed total is taken verbatim.
+
+The clamp applies to a total the **user supplied**, never to one merely read back
+out of the store. A game may legitimately hold a negative total (played while the
+preference was on); clamping it just because the editor displayed it would
+propose a change nobody made — arming the save control with no input and
+rewriting a finished score.
 
 ## The rule: a changed final score, or it never happened
 

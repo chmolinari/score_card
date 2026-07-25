@@ -38,6 +38,14 @@ android {
     }
 }
 
+// Room writes the expected schema for each version here, and the files are
+// committed. A hand-written migration that drifts from the entity definitions
+// only fails at runtime, on upgrading devices — a diffable schema is what makes
+// that drift visible in review instead.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

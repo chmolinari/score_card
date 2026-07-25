@@ -241,6 +241,8 @@ private fun RegisterGameDetails(
     val scope = rememberCoroutineScope()
 
     // Raw text per competitor so partial input ("-", empty) survives typing.
+    val allowNegativeScores by container.prefs.allowNegativeScores
+        .collectAsStateWithLifecycle(initialValue = false)
     var scoreTexts by remember { mutableStateOf(List(draft.competitors.size) { "" }) }
     var hasDate by remember { mutableStateOf(true) }
     var hasTime by remember { mutableStateOf(false) }
@@ -291,6 +293,7 @@ private fun RegisterGameDetails(
                         participantId = participantId,
                         points = requireNotNull(scores[index]),
                         playedAt = playedAt,
+                        allowNegativeScores = allowNegativeScores,
                     )
                 )
             }
@@ -335,10 +338,12 @@ private fun RegisterGameDetails(
                             OutlinedTextField(
                                 value = scoreTexts[index],
                                 onValueChange = { text ->
-                                    // Digits with an optional leading minus; the
-                                    // IME shows a number pad, the filter is what
+                                    // A leading minus is only accepted when
+                                    // below-zero totals are allowed; the IME
+                                    // shows a number pad, the filter is what
                                     // actually guards the input.
-                                    if (text.matches(Regex("-?\\d*"))) {
+                                    val pattern = if (allowNegativeScores) "-?\\d*" else "\\d*"
+                                    if (text.matches(Regex(pattern))) {
                                         scoreTexts = scoreTexts.toMutableList()
                                             .also { it[index] = text }
                                     }
@@ -351,7 +356,12 @@ private fun RegisterGameDetails(
                         }
                     }
                 }
-                item { FooterText("Enter each competitor's final total.") }
+                item {
+                    FooterText(
+                        if (allowNegativeScores) "Enter each competitor's final total."
+                        else "Enter each competitor's final total. Totals stop at zero."
+                    )
+                }
 
                 item { PlayfulSectionHeader("Played On") }
                 item {

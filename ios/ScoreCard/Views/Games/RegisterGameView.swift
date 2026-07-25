@@ -99,6 +99,7 @@ struct RegisterGameView: View {
 /// keyed by competitor ID, which changes when a fresh object first saves.
 private struct RegisterGameDetailsView: View {
     @Environment(\.modelContext) private var modelContext
+    @AppStorage(NegativeScores.storageKey) private var allowNegativeScores = false
 
     let draft: GameDraft
     let gameName: GameName?
@@ -127,7 +128,9 @@ private struct RegisterGameDetailsView: View {
                         Text(competitor.name)
                         Spacer()
                         TextField("Score", value: $scores[index], format: .number)
-                            .keyboardType(.numbersAndPunctuation)   // number pad has no minus key
+                            // The minus key only exists when below-zero totals
+                            // are allowed; the plain number pad has none.
+                            .keyboardType(allowNegativeScores ? .numbersAndPunctuation : .numberPad)
                             .multilineTextAlignment(.trailing)
                             .frame(maxWidth: 100)
                             .accessibilityIdentifier("registerScore\(index)")
@@ -136,7 +139,9 @@ private struct RegisterGameDetailsView: View {
             } header: {
                 Text("Final Scores")
             } footer: {
-                Text("Enter each competitor's final total.")
+                Text(allowNegativeScores
+                     ? "Enter each competitor's final total."
+                     : "Enter each competitor's final total. Totals stop at zero.")
             }
 
             Section {
@@ -186,6 +191,7 @@ private struct RegisterGameDetailsView: View {
                                                                              hasTime: hasTime,
                                                                              selection: playedAt),
                                        locationName: locationText,
+                                       allowNegativeScores: allowNegativeScores,
                                        in: modelContext)
         // Remember this as the most recently used name so it pre-selects next time.
         gameName?.lastUsedAt = .now

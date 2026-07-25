@@ -14,11 +14,11 @@ enum GameScoreEdit {
     /// The total actually storable for a requested new total.
     ///
     /// The app-wide below-zero preference (see `NegativeScores` and
-    /// docs/scoring-rules.md) applies to edits exactly as it does to live
+    /// docs/scoring-rules.md) applies to corrections exactly as it does to live
     /// scoring: with it off, a total can't be driven below zero, so anything
     /// negative lands on zero instead.
     static func normalizedTotal(_ requested: Int, allowNegative: Bool) -> Int {
-        allowNegative ? requested : max(requested, 0)
+        NegativeScores.clamped(requested, allowNegative: allowNegative)
     }
 
     /// The score entry delta needed to move a competitor from one total to another.

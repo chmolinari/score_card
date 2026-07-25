@@ -69,9 +69,18 @@ object GameRegistration {
         }
 
     // A competitor's final total as its single score entry, stamped with the
-    // played-on instant like the game itself. Zero and negative finals are
-    // stored verbatim regardless of the below-zero preference — the clamp
-    // governs live subtraction, not the transcription of an existing result.
-    fun finalScoreEntry(participantId: Long, points: Int, playedAt: Instant): ScoreEntryEntity =
-        ScoreEntryEntity(participantId = participantId, points = points, timestamp = playedAt)
+    // played-on instant like the game itself. A transcribed total obeys the same
+    // below-zero preference as a played one, so registering a past game can't be
+    // a back door past the user's choice.
+    fun finalScoreEntry(
+        participantId: Long,
+        points: Int,
+        playedAt: Instant,
+        allowNegativeScores: Boolean = false,
+    ): ScoreEntryEntity =
+        ScoreEntryEntity(
+            participantId = participantId,
+            points = NegativeScores.clamped(points, allowNegativeScores),
+            timestamp = playedAt,
+        )
 }

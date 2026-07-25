@@ -72,8 +72,8 @@ class Prefs(private val context: Context) {
         context.dataStore.edit { prefs -> prefs[Keys.hasSeededGameNames] = value }
     }
 
-    // Whether a participant's total may drop below zero. Off (default) clamps any
-    // subtraction at zero; see NegativeScores / docs/scoring-rules.md.
+    // Whether a competitor's total may drop below zero. Off (default) clamps any
+    // score-writing action at zero; see NegativeScores / docs/scoring-rules.md.
     val allowNegativeScores: Flow<Boolean> = context.dataStore.data
         .map { prefs -> prefs[Keys.allowNegativeScores] ?: false }
 

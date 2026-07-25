@@ -312,6 +312,19 @@ struct ScoreCardTests {
         #expect(NegativeScores.effectiveDelta(points: -5, currentTotal: 2, allowNegative: true) == -5)
     }
 
+    /// A total the user supplies outright obeys the same preference a
+    /// subtraction does — it is not a back door past the user's choice.
+    @Test func suppliedTotalsFollowTheSamePolicy() {
+        #expect(NegativeScores.clamped(-1, allowNegative: false) == 0)
+        #expect(NegativeScores.clamped(-40, allowNegative: false) == 0)
+        #expect(NegativeScores.clamped(0, allowNegative: false) == 0)
+        #expect(NegativeScores.clamped(21, allowNegative: false) == 21)
+
+        #expect(NegativeScores.clamped(-1, allowNegative: true) == -1)
+        #expect(NegativeScores.clamped(-40, allowNegative: true) == -40)
+        #expect(NegativeScores.clamped(21, allowNegative: true) == 21)
+    }
+
     // MARK: Players/Teams list ordering
 
     /// A stand-in for a player or team: the sorter only needs a name and a tally.
@@ -867,7 +880,7 @@ struct ScoreCardTests {
         #expect(blue.tally.won == 0)
     }
 
-    @Test func registeredGameAllowsNegativeAndZeroFinals() throws {
+    @Test func registeredGameFollowsTheBelowZeroPreference() throws {
         let container = try makeContainer()
         let context = container.mainContext
         let alice = Player(name: "Alice")
@@ -881,8 +894,20 @@ struct ScoreCardTests {
                                                  locationName: nil,
                                                  in: context)
 
+        // Registering defaults to clamping, like every other scoring path, so
+        // the -5 lands on 0 and the two competitors tie at zero.
         let scores = game.rankedParticipants.map(\.totalScore)
-        #expect(scores == [0, -5])   // stored verbatim, ranked highest-first
+        #expect(scores == [0, 0])
+
+        // With below-zero allowed, the transcribed total is kept verbatim.
+        let negative = try GameRegistration.register(title: "Spades",
+                                                     finalScores: [.init(competitor: .player(alice), points: -5),
+                                                                   .init(competitor: .player(bob), points: 0)],
+                                                     playedAt: .now,
+                                                     locationName: nil,
+                                                     allowNegativeScores: true,
+                                                     in: context)
+        #expect(negative.rankedParticipants.map(\.totalScore) == [0, -5])
     }
 
     @Test func registeredGameOrdersByPlayedDateInHistory() throws {
@@ -1000,12 +1025,14 @@ struct ScoreCardTests {
         #expect(GameScoreEdit.normalizedTotal(0, allowNegative: false) == 0)
 
         // Allowed: stored verbatim, sign and all.
-        #expect(GameScoreEdit.normalizedTotal(-1, allowNegative: true) == -1)
-        #expect(GameScoreEdit.normalizedTotal(-40, allowNegative: true) == -40)
+        
+        
 
         // Positives are never touched, whatever the policy.
         #expect(GameScoreEdit.normalizedTotal(21, allowNegative: false) == 21)
-        #expect(GameScoreEdit.normalizedTotal(21, allowNegative: true) == 21)
+        #expect(GameScoreEdit.normalizedTotal(-1, allowNegative: true) == -1)
+        #expect(GameScoreEdit.normalizedTotal(-40, allowNegative: true) == -40)
+        
     }
 
     /// A total is the sum of its entries, so an edit is applied by appending one

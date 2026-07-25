@@ -74,7 +74,9 @@ class BackupJsonTest {
                 ),
                 currentDealerIndex = 1,
                 currentHand = 3,
-                // Newest first, the order both platforms write.
+                // Listed newest-first here only because that is what a real
+                // export produces; this test pins the JSON shape, not the
+                // ordering (BackupMappingTest pins that).
                 edits = listOf(
                     GameEditDTO(
                         reason = "Miscounted the last scopa",

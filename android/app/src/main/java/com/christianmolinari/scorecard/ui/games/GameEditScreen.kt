@@ -34,14 +34,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,9 +60,13 @@ import com.christianmolinari.scorecard.domain.totalScore
 import com.christianmolinari.scorecard.ui.components.AppBackground
 import com.christianmolinari.scorecard.ui.components.CardTile
 import com.christianmolinari.scorecard.ui.components.PlayfulSectionHeader
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.Instant
+
+// rememberSaveable's default saver can't carry a List, so these flatten the two
+// index-parallel score lists into something the saved-instance Bundle accepts.
+private val IntListStateSaver = listSaver<List<Int>, Int>(save = { it }, restore = { it })
+private val StringListStateSaver = listSaver<List<String>, String>(save = { it }, restore = { it })
 
 @Composable
 fun GameEditScreen(
@@ -100,33 +106,32 @@ private fun GameEditContent(
     val participants = remember(game.game.id) { game.rankedParticipants }
     val originalTotals = remember(game.game.id) { participants.map { it.totalScore } }
 
-    var reason by remember(game.game.id) { mutableStateOf("") }
-    var totalTexts by remember(game.game.id) {
+    // Saveable so a rotation or a low-memory kill mid-flow doesn't throw away a
+    // typed reason and every retyped total.
+    var reason by rememberSaveable(game.game.id) { mutableStateOf("") }
+    // Seeded verbatim from the stored totals and changed ONLY by a user action.
+    //
+    // Deriving these by re-normalizing every field on each recomposition would
+    // apply the below-zero clamp to rows nobody touched: a competitor stored on
+    // a negative total (registering a past game keeps negative finals verbatim,
+    // whatever the preference says) would silently propose zero, arming Save
+    // with no input and rewriting a finished score on the next tap.
+    var proposedTotals by rememberSaveable(game.game.id, stateSaver = IntListStateSaver) {
+        mutableStateOf(originalTotals)
+    }
+    var totalTexts by rememberSaveable(game.game.id, stateSaver = StringListStateSaver) {
         mutableStateOf(originalTotals.map { it.toString() })
     }
-    var isEditingScores by remember(game.game.id) { mutableStateOf(false) }
+    var isEditingScores by rememberSaveable(game.game.id) { mutableStateOf(false) }
     // Latches the commit: the screen stays up while the write and the pop run,
     // so without this a second tap would append the same delta again and log a
     // second edit for one correction.
     var isSaving by remember(game.game.id) { mutableStateOf(false) }
 
-    var allowNegativeScores by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        allowNegativeScores = container.prefs.allowNegativeScores.first()
-    }
-
-    // Parsed per keystroke rather than when a field loses focus: Save lives in
-    // the app bar and tapping it doesn't move focus first, so a parse-on-blur
-    // field would let Save commit a stale total — silently dropping what was
-    // just typed while still recording an edit claiming the score was
-    // corrected. An empty or half-typed field ("", "-") reads as "unchanged"
-    // rather than as zero, so clearing a total never arms Save on its own.
-    val proposedTotals = totalTexts.mapIndexed { index, text ->
-        GameScoreEdit.normalizedTotal(
-            requested = text.toIntOrNull() ?: originalTotals[index],
-            allowNegative = allowNegativeScores,
-        )
-    }
+    // Collected rather than read once, so the clamp can't be applied with a
+    // stale default while the preference is still loading.
+    val allowNegativeScores by container.prefs.allowNegativeScores
+        .collectAsStateWithLifecycle(initialValue = false)
 
     val trimmedReason = reason.trim()
     val canContinue = trimmedReason.isNotEmpty()
@@ -134,7 +139,31 @@ private fun GameEditContent(
 
     fun setTotal(index: Int, value: Int) {
         val normalized = GameScoreEdit.normalizedTotal(value, allowNegativeScores)
+        proposedTotals = proposedTotals.toMutableList().also { it[index] = normalized }
         totalTexts = totalTexts.toMutableList().also { it[index] = normalized.toString() }
+    }
+
+    // Typed totals reach the state per keystroke rather than when the field
+    // loses focus: Save lives in the app bar and tapping it doesn't move focus
+    // first, so a parse-on-blur field would let Save commit a stale total —
+    // silently dropping what was just typed while still recording an edit
+    // claiming the score was corrected.
+    fun onTextChange(index: Int, text: String) {
+        totalTexts = totalTexts.toMutableList().also { it[index] = text }
+        proposedTotals = proposedTotals.toMutableList().also {
+            it[index] = GameScoreEdit.typedTotal(
+                text = text,
+                fallback = originalTotals[index],
+                allowNegative = allowNegativeScores,
+            )
+        }
+    }
+
+    // Re-render the field from the total that will actually be stored once it
+    // loses focus, so a clamped or half-typed entry ("-5" with below-zero off,
+    // or an emptied field) stops showing a number the game will not store.
+    fun onFieldCommitted(index: Int) {
+        totalTexts = totalTexts.toMutableList().also { it[index] = proposedTotals[index].toString() }
     }
 
     fun save() {
@@ -159,7 +188,12 @@ private fun GameEditContent(
         }
     }
 
-    BackHandler(enabled = !isSaving) {
+    // Always intercept. Leaving the handler disabled during the save would let
+    // Back fall through to the NavController, popping this screen and
+    // cancelling the coroutine scope the write is running in — the opposite of
+    // what guarding on isSaving is for.
+    BackHandler {
+        if (isSaving) return@BackHandler
         if (isEditingScores) isEditingScores = false else onDone()
     }
 
@@ -206,9 +240,8 @@ private fun GameEditContent(
                     participants = participants.map { it.displayName to it.subtitle },
                     totalTexts = totalTexts,
                     allowNegativeScores = allowNegativeScores,
-                    onTextChange = { index, text ->
-                        totalTexts = totalTexts.toMutableList().also { it[index] = text }
-                    },
+                    onTextChange = ::onTextChange,
+                    onFieldCommitted = ::onFieldCommitted,
                     onStep = { index, step ->
                         setTotal(index, proposedTotals[index] + step)
                     },
@@ -261,6 +294,7 @@ private fun ScoresStep(
     totalTexts: List<String>,
     allowNegativeScores: Boolean,
     onTextChange: (Int, String) -> Unit,
+    onFieldCommitted: (Int) -> Unit,
     onStep: (Int, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -299,15 +333,18 @@ private fun ScoresStep(
                     OutlinedTextField(
                         value = totalTexts[index],
                         onValueChange = { text ->
-                            // Digits with an optional leading minus, like the
-                            // Register Past Game score fields; the IME shows a
-                            // number pad, the filter is what actually guards it.
-                            if (text.matches(Regex("-?\\d*"))) onTextChange(index, text)
+                            // A leading minus is only accepted when below-zero
+                            // totals are allowed. The IME shows a number pad;
+                            // the filter is what actually guards the input.
+                            val pattern = if (allowNegativeScores) "-?\\d*" else "\\d*"
+                            if (text.matches(Regex(pattern))) onTextChange(index, text)
                         },
                         label = { Text("Total") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.width(110.dp),
+                        modifier = Modifier
+                            .width(110.dp)
+                            .onFocusChanged { if (!it.isFocused) onFieldCommitted(index) },
                     )
                     IconButton(onClick = { onStep(index, 1) }) {
                         Icon(Icons.Filled.Add, contentDescription = "Raise $name's total")

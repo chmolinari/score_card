@@ -39,7 +39,7 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         GameEditEntity::class,
     ],
     version = 2,
-    exportSchema = false,
+    exportSchema = true,
 )
 @TypeConverters(InstantConverters::class)
 abstract class ScoreCardDatabase : RoomDatabase() {

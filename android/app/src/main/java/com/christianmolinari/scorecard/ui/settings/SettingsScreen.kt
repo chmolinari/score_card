@@ -91,10 +91,10 @@ fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit) {
         .collectAsStateWithLifecycle(initialValue = DealingDirection.CounterClockwise)
     val drawDealingRule by container.prefs.drawDealingRule
         .collectAsStateWithLifecycle(initialValue = DrawDealingRule.Ask)
-    val allowNegativeScores by container.prefs.allowNegativeScores
-        .collectAsStateWithLifecycle(initialValue = false)
 
     val scope = rememberCoroutineScope()
+    val allowNegativeScores by container.prefs.allowNegativeScores
+        .collectAsStateWithLifecycle(initialValue = false)
     val context = LocalContext.current
 
     // Backup / reset state. (Restore lives in BackupListScreen.)
@@ -287,8 +287,9 @@ fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit) {
                 item(key = "scoring") {
                     SettingsSection(
                         title = "Scoring",
-                        footer = "When off, subtracting points stops a player's total at zero. " +
-                            "Turn on to allow negative scores.",
+                        footer = "When off, a total stops at zero everywhere — subtracting, " +
+                            "correcting a finished game, and registering a past one. Turn on " +
+                            "for games that go negative, like Spades or Pinochle.",
                     ) {
                         Row(
                             modifier = Modifier

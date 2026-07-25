@@ -34,13 +34,15 @@ enum GameRegistration {
 
     /// Create and save a closed, backdated game. `createdAt` and `closedAt` are
     /// both the played-on date, so history ordering follows when the game was
-    /// actually played. Final totals may be zero or negative — the below-zero
-    /// scoring preference only governs live subtraction, not transcribed results.
+    /// actually played. A transcribed final total obeys the below-zero
+    /// preference exactly like a played one: with it off, a negative final
+    /// lands on zero rather than slipping past the user's choice.
     @discardableResult
     static func register(title: String,
                          finalScores: [FinalScore],
                          playedAt: Date,
                          locationName: String?,
+                         allowNegativeScores: Bool = false,
                          in context: ModelContext) throws -> Game {
         let game = Game(title: title)
         game.createdAt = playedAt
@@ -61,7 +63,11 @@ enum GameRegistration {
             participant.game = game
             context.insert(participant)
 
-            let entry = ScoreEntry(points: finalScore.points, timestamp: playedAt)
+            // A transcribed total obeys the same below-zero policy as a played
+            // one, so a past game can't be a back door past the user's choice.
+            let entry = ScoreEntry(points: NegativeScores.clamped(finalScore.points,
+                                                                  allowNegative: allowNegativeScores),
+                                   timestamp: playedAt)
             entry.participant = participant
             context.insert(entry)
         }

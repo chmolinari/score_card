@@ -818,6 +818,7 @@ struct ScoreCardTests {
                                                                .init(competitor: .player(bob), points: 15)],
                                                  playedAt: playedAt,
                                                  locationName: "Nonna's house",
+                                                 allowNegativeScores: false,
                                                  in: context)
 
         #expect(game.isOpen == false)
@@ -845,6 +846,7 @@ struct ScoreCardTests {
                                                                .init(competitor: .player(bob), points: 15)],
                                                  playedAt: .now,
                                                  locationName: nil,
+                                                 allowNegativeScores: false,
                                                  in: context)
 
         let winner = try #require(game.rankedParticipants.first)
@@ -871,6 +873,7 @@ struct ScoreCardTests {
                                                                .init(competitor: .team(blue), points: 10)],
                                                  playedAt: .now,
                                                  locationName: nil,
+                                                 allowNegativeScores: false,
                                                  in: context)
 
         #expect(game.isDraw)
@@ -892,6 +895,7 @@ struct ScoreCardTests {
                                                                .init(competitor: .player(bob), points: 0)],
                                                  playedAt: .now,
                                                  locationName: nil,
+                                                 allowNegativeScores: false,
                                                  in: context)
 
         // Registering defaults to clamping, like every other scoring path, so
@@ -926,6 +930,7 @@ struct ScoreCardTests {
                                                     .init(competitor: .player(bob), points: 15)],
                                       playedAt: yearAgo,
                                       locationName: nil,
+                                      allowNegativeScores: false,
                                       in: context)
 
         // Same sort the Games tab uses: createdAt, newest first.
@@ -944,11 +949,13 @@ struct ScoreCardTests {
                                                      .init(competitor: .player(bob), points: 2)]
 
         let blank = try GameRegistration.register(title: "A", finalScores: scores,
-                                                  playedAt: .now, locationName: "   ", in: context)
+                                                  playedAt: .now, locationName: "   ",
+                                                 allowNegativeScores: false, in: context)
         #expect(blank.locationName == nil)
 
         let padded = try GameRegistration.register(title: "B", finalScores: scores,
-                                                   playedAt: .now, locationName: "  Nonna's house  ", in: context)
+                                                   playedAt: .now, locationName: "  Nonna's house  ",
+                                                   allowNegativeScores: false, in: context)
         #expect(padded.locationName == "Nonna's house")
     }
 

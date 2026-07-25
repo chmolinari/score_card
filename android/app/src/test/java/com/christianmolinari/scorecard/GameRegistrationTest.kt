@@ -58,7 +58,12 @@ class GameRegistrationTest {
             ParticipantWithDetails(
                 participant = participant,
                 entries = listOf(
-                    GameRegistration.finalScoreEntry(participant.id, points, playedAt)
+                    GameRegistration.finalScoreEntry(
+                        participantId = participant.id,
+                        points = points,
+                        playedAt = playedAt,
+                        allowNegativeScores = false,
+                    )
                 ),
                 player = player,
                 team = null,
@@ -120,10 +125,12 @@ class GameRegistrationTest {
         assertNull(game.game.targetPoints)
         assertNull(game.game.latitude)
         assertNull(game.game.longitude)
-        assertTrue(game.seats.isEmpty())
-        // Each competitor's total is one entry stamped with the played-on instant.
+        // Not asserted here: that the game has no seats and exactly one entry
+        // per competitor. `registeredGame` constructs the relation graph by
+        // hand, so both would only read back the helper's own literals — the
+        // builders under test have no seat or entry-count concept at all.
+        // Each competitor's entry is stamped with the played-on instant.
         for (participant in game.participants) {
-            assertEquals(1, participant.entries.size)
             assertEquals(playedAt, participant.entries.single().timestamp)
         }
     }
@@ -238,6 +245,22 @@ class GameRegistrationTest {
             DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
                 .withZone(zone).format(evening),
             GameFormatting.dateTime(evening, zone),
+        )
+    }
+
+    @Test
+    fun dateOnlyStampIsRecognizedAcrossADaylightSavingGap() {
+        // America/Havana springs forward at 00:00, so 2025-03-09 has no local
+        // midnight and atStartOfDay lands on 01:00. Comparing the stamp against
+        // a literal LocalTime.MIDNIGHT would miss the "time unknown" marker and
+        // render a time of day the user never gave.
+        val havana = ZoneId.of("America/Havana")
+        val date = LocalDate.of(2025, 3, 9)
+        val stamp = GameRegistration.playedInstant(date = date, time = null, zone = havana, now = now)
+
+        assertEquals(
+            DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withZone(havana).format(stamp),
+            GameFormatting.dateTime(stamp, havana),
         )
     }
 }

@@ -44,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,6 +62,9 @@ import com.christianmolinari.scorecard.domain.NameComparator
 import com.christianmolinari.scorecard.domain.resolveCompetitors
 import com.christianmolinari.scorecard.ui.components.AppBackground
 import com.christianmolinari.scorecard.ui.components.CardTile
+import com.christianmolinari.scorecard.ui.components.LocalDateStateSaver
+import com.christianmolinari.scorecard.ui.components.LocalTimeStateSaver
+import com.christianmolinari.scorecard.ui.components.StringListStateSaver
 import com.christianmolinari.scorecard.ui.components.GameNameEditDialog
 import com.christianmolinari.scorecard.ui.components.PlayerEditDialog
 import com.christianmolinari.scorecard.ui.components.PlayfulSectionHeader
@@ -243,12 +247,22 @@ private fun RegisterGameDetails(
     // Raw text per competitor so partial input ("-", empty) survives typing.
     val allowNegativeScores by container.prefs.allowNegativeScores
         .collectAsStateWithLifecycle(initialValue = false)
-    var scoreTexts by remember { mutableStateOf(List(draft.competitors.size) { "" }) }
-    var hasDate by remember { mutableStateOf(true) }
-    var hasTime by remember { mutableStateOf(false) }
-    var playedDate by remember { mutableStateOf(LocalDate.now()) }
-    var playedTime by remember { mutableStateOf(LocalTime.now().withSecond(0).withNano(0)) }
-    var locationText by remember { mutableStateOf("") }
+    // Saveable: this screen transcribes a paper score sheet, so it is the one
+    // most likely to be interrupted — rotated, or backgrounded to look at a
+    // photo of the sheet and killed. Losing the typed totals would mean
+    // re-entering the whole game.
+    var scoreTexts by rememberSaveable(stateSaver = StringListStateSaver) {
+        mutableStateOf(List(draft.competitors.size) { "" })
+    }
+    var hasDate by rememberSaveable { mutableStateOf(true) }
+    var hasTime by rememberSaveable { mutableStateOf(false) }
+    var playedDate by rememberSaveable(stateSaver = LocalDateStateSaver) {
+        mutableStateOf(LocalDate.now())
+    }
+    var playedTime by rememberSaveable(stateSaver = LocalTimeStateSaver) {
+        mutableStateOf(LocalTime.now().withSecond(0).withNano(0))
+    }
+    var locationText by rememberSaveable { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }

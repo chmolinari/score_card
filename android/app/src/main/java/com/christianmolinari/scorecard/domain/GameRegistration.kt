@@ -76,7 +76,10 @@ object GameRegistration {
         participantId: Long,
         points: Int,
         playedAt: Instant,
-        allowNegativeScores: Boolean = false,
+        // No default: a transcribed total must state which policy it was
+        // written under, so dropping the argument is a compile error rather
+        // than a silent revert to clamping.
+        allowNegativeScores: Boolean,
     ): ScoreEntryEntity =
         ScoreEntryEntity(
             participantId = participantId,

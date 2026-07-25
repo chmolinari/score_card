@@ -42,7 +42,11 @@ enum GameRegistration {
                          finalScores: [FinalScore],
                          playedAt: Date,
                          locationName: String?,
-                         allowNegativeScores: Bool = false,
+                         // No default: a transcribed total must state which
+                         // policy it was written under, so dropping the argument
+                         // is a compile error rather than a silent revert to
+                         // clamping.
+                         allowNegativeScores: Bool,
                          in context: ModelContext) throws -> Game {
         let game = Game(title: title)
         game.createdAt = playedAt

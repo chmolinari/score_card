@@ -2,7 +2,6 @@ package com.christianmolinari.scorecard.ui.components
 
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -16,8 +15,16 @@ object GameFormatting {
     // millisecond precision and essentially never land on 00:00:00.000. The
     // zone parameter exists for tests; production callers use the default.
     fun dateTime(instant: Instant, zone: ZoneId = ZoneId.systemDefault()): String {
+        // Compared against the zone's actual start of day, not the literal
+        // LocalTime.MIDNIGHT: a date-only stamp is built with atStartOfDay,
+        // which skips forward over a daylight-saving gap, so on a transition
+        // day midnight does not exist and the marker would be missed — showing
+        // a time of day the user explicitly declined to give. iOS compares
+        // against Calendar.startOfDay for the same reason.
+        val zoned = instant.atZone(zone)
+        val isDateOnly = zoned.toLocalDate().atStartOfDay(zone).toInstant() == instant
         val style =
-            if (instant.atZone(zone).toLocalTime() == LocalTime.MIDNIGHT) {
+            if (isDateOnly) {
                 DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
             } else {
                 DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)

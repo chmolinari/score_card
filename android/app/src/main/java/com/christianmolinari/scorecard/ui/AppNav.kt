@@ -23,6 +23,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.christianmolinari.scorecard.AppContainer
 import com.christianmolinari.scorecard.ui.games.GameDetailScreen
+import com.christianmolinari.scorecard.ui.games.GameEditScreen
 import com.christianmolinari.scorecard.ui.games.GamesScreen
 import com.christianmolinari.scorecard.ui.games.NewGameScreen
 import com.christianmolinari.scorecard.ui.games.RegisterGameScreen
@@ -149,6 +150,17 @@ fun ScoreCardApp(container: AppContainer) {
                     container = container,
                     gameId = requireNotNull(entry.arguments).getLong("gameId"),
                     onBack = { navController.popBackStack() },
+                    onEditScores = { navController.navigate("editGame/${it}") },
+                )
+            }
+            composable(
+                route = "editGame/{gameId}",
+                arguments = listOf(navArgument("gameId") { type = NavType.LongType }),
+            ) { entry ->
+                GameEditScreen(
+                    container = container,
+                    gameId = requireNotNull(entry.arguments).getLong("gameId"),
+                    onDone = { navController.popBackStack() },
                 )
             }
             composable("backups") {

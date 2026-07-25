@@ -101,6 +101,17 @@ data class GameDTO(
     val currentDealerIndex: Int? = null,
     // Optional so backups written before the hand counter still decode.
     val currentHand: Int? = null,
+    // Corrections made to this game's scores after it closed, newest first.
+    // Optional so backups written before editing was added still decode (and so
+    // app versions predating it can still restore newer backups — hence the
+    // format version is left unchanged).
+    val edits: List<GameEditDTO>? = null,
+)
+
+@Serializable
+data class GameEditDTO(
+    val reason: String,
+    val editedAt: IsoInstant,
 )
 
 @Serializable

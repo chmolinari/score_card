@@ -57,6 +57,16 @@ interface GameDao {
     @Delete suspend fun deleteScoreEntry(entry: ScoreEntryEntity)
     @Insert suspend fun insertSeat(seat: SeatEntity): Long
     @Query("DELETE FROM seats WHERE gameId = :gameId") suspend fun deleteSeatsForGame(gameId: Long)
+    @Insert suspend fun insertGameEdit(edit: GameEditEntity): Long
+
+    // Correcting a closed game: the delta entries and the edit record have to
+    // land together, or a reader could catch a game whose scores moved with no
+    // reason logged (or the reverse).
+    @Transaction
+    suspend fun applyScoreEdit(entries: List<ScoreEntryEntity>, edit: GameEditEntity) {
+        for (entry in entries) insertScoreEntry(entry)
+        insertGameEdit(edit)
+    }
 }
 
 // Children before parents, mirroring BackupService.eraseAll on iOS.
@@ -64,6 +74,7 @@ interface GameDao {
 interface WipeDao {
     @Query("DELETE FROM score_entries") suspend fun wipeScoreEntries()
     @Query("DELETE FROM seats") suspend fun wipeSeats()
+    @Query("DELETE FROM game_edits") suspend fun wipeGameEdits()
     @Query("DELETE FROM participants") suspend fun wipeParticipants()
     @Query("DELETE FROM games") suspend fun wipeGames()
     @Query("DELETE FROM team_members") suspend fun wipeTeamMembers()
@@ -75,6 +86,7 @@ interface WipeDao {
     suspend fun wipeAll() {
         wipeScoreEntries()
         wipeSeats()
+        wipeGameEdits()
         wipeParticipants()
         wipeGames()
         wipeTeamMembers()

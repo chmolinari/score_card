@@ -1,11 +1,13 @@
 package com.christianmolinari.scorecard.domain
 
+import com.christianmolinari.scorecard.data.db.GameEditEntity
 import com.christianmolinari.scorecard.data.db.GameWithDetails
 import com.christianmolinari.scorecard.data.db.ParticipantWithDetails
 import com.christianmolinari.scorecard.data.db.PlayerEntity
 import com.christianmolinari.scorecard.data.db.ScoreEntryEntity
 import com.christianmolinari.scorecard.data.db.SeatWithPlayer
 import com.christianmolinari.scorecard.data.db.TeamWithMembers
+import java.time.Instant
 
 // Pure domain logic over the Room relation types, porting the iOS computed
 // properties on Game, GameParticipant and Team.
@@ -93,6 +95,21 @@ val GameWithDetails.topScorers: List<ParticipantWithDetails>
 // A closed game is a draw when no single competitor has the top score.
 val GameWithDetails.isDraw: Boolean
     get() = !isOpen && topScorers.size > 1
+
+// MARK: Game — corrections made after closing
+
+// Whether this game's scores were corrected after it was closed. Drives the
+// "Edited" badge on the game's card and in its info section.
+val GameWithDetails.isEdited: Boolean
+    get() = edits.isNotEmpty()
+
+// Corrections newest-first, for the detail screen's edit history.
+val GameWithDetails.sortedEdits: List<GameEditEntity>
+    get() = edits.sortedByDescending { it.editedAt }
+
+// When this game was last corrected, or null if it never was.
+val GameWithDetails.lastEditedAt: Instant?
+    get() = sortedEdits.firstOrNull()?.editedAt
 
 // MARK: Game — seating and dealing
 

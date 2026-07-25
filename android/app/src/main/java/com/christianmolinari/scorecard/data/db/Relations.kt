@@ -36,4 +36,6 @@ data class GameWithDetails(
     val participants: List<ParticipantWithDetails>,
     @Relation(parentColumn = "id", entityColumn = "gameId", entity = SeatEntity::class)
     val seats: List<SeatWithPlayer>,
+    @Relation(parentColumn = "id", entityColumn = "gameId")
+    val edits: List<GameEditEntity> = emptyList(),
 )

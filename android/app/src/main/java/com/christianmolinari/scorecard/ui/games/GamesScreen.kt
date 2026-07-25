@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.History
@@ -58,6 +59,7 @@ import com.christianmolinari.scorecard.AppContainer
 import com.christianmolinari.scorecard.data.db.GameWithDetails
 import com.christianmolinari.scorecard.domain.displayName
 import com.christianmolinari.scorecard.domain.isDraw
+import com.christianmolinari.scorecard.domain.isEdited
 import com.christianmolinari.scorecard.domain.isOpen
 import com.christianmolinari.scorecard.domain.leader
 import com.christianmolinari.scorecard.domain.rankedParticipants
@@ -204,7 +206,10 @@ private fun GameRow(game: GameWithDetails, onClick: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     Text(
                         text = game.game.title,
                         style = MaterialTheme.typography.titleMedium,
@@ -213,6 +218,11 @@ private fun GameRow(game: GameWithDetails, onClick: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
+                    // Sky reads as informational next to the teal/plum/amber
+                    // result badges.
+                    if (game.isEdited) {
+                        StatusChip(text = "Edited", icon = Icons.Filled.Edit, color = ThemeColors.sky)
+                    }
                     StatusBadge(game)
                 }
 

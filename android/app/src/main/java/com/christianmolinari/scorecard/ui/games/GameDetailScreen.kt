@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.HorizontalDivider
@@ -49,19 +50,27 @@ import com.christianmolinari.scorecard.data.db.GameWithDetails
 import com.christianmolinari.scorecard.data.db.ParticipantWithDetails
 import com.christianmolinari.scorecard.domain.displayName
 import com.christianmolinari.scorecard.domain.isDraw
+import com.christianmolinari.scorecard.domain.isEdited
 import com.christianmolinari.scorecard.domain.rankedParticipants
+import com.christianmolinari.scorecard.domain.sortedEdits
 import com.christianmolinari.scorecard.domain.subtitle
 import com.christianmolinari.scorecard.domain.topScorers
 import com.christianmolinari.scorecard.domain.totalScore
 import com.christianmolinari.scorecard.location.LocationCapture
 import com.christianmolinari.scorecard.ui.components.AppBackground
 import com.christianmolinari.scorecard.ui.components.CardTile
+import com.christianmolinari.scorecard.ui.components.GameFormatting
 import com.christianmolinari.scorecard.ui.components.PlayfulSectionHeader
 import com.christianmolinari.scorecard.ui.theme.ThemeColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GameDetailScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) {
+fun GameDetailScreen(
+    container: AppContainer,
+    gameId: Long,
+    onBack: () -> Unit,
+    onEditScores: (Long) -> Unit,
+) {
     val game by container.database.gameDao().observeGame(gameId)
         .collectAsStateWithLifecycle(initialValue = null)
 
@@ -80,6 +89,13 @@ fun GameDetailScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) 
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        // Only a finished game reaches this screen; an open one
+                        // is corrected by scoring on the board instead.
+                        IconButton(onClick = { onEditScores(gameId) }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Edit Scores")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -151,6 +167,30 @@ private fun GameDetailContent(game: GameWithDetails, modifier: Modifier = Modifi
 
         item { PlayfulSectionHeader(title = "Details") }
         item { GameInfoSection(game) }
+
+        // The reason for every correction is recorded, not discarded: this is
+        // why the editor insists on one before it starts.
+        if (game.isEdited) {
+            item { PlayfulSectionHeader(title = "Edit History", icon = Icons.Filled.Edit) }
+            item {
+                val edits = game.sortedEdits
+                CardTile {
+                    edits.forEachIndexed { index, edit ->
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(edit.reason, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                GameFormatting.dateTime(edit.editedAt),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (index < edits.lastIndex) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

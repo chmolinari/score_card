@@ -25,6 +25,14 @@ final class Game {
     var createdAt: Date = Date.now
     var closedAt: Date?
 
+    // Whether `createdAt` records a date whose time of day is unknown — a game
+    // registered without a played-on time. Inferring this from the stamp being
+    // start-of-day cannot survive a change of time zone, and cannot tell a
+    // deliberate 12:00 AM from "no time given", so the intent is stored.
+    // nil means the game predates this field: fall back to the old inference,
+    // which is what it was written with. See docs/registering-past-games.md.
+    var playedDateOnly: Bool?
+
     // Requirement: every game is tagged with geolocation. Stored as primitive
     // components (CloudKit has no CLLocation type). All optional because the user
     // may decline location permission.

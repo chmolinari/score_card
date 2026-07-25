@@ -106,6 +106,11 @@ data class GameDTO(
     // app versions predating it can still restore newer backups — hence the
     // format version is left unchanged).
     val edits: List<GameEditDTO>? = null,
+    // Whether createdAt records a date whose time of day is unknown. Optional
+    // in both directions: absent means "recorded before the field existed",
+    // which readers fall back to inferring, so the format version is
+    // deliberately unchanged.
+    val playedDateOnly: Boolean? = null,
 )
 
 @Serializable

@@ -818,7 +818,8 @@ struct ScoreCardTests {
                                                                .init(competitor: .player(bob), points: 15)],
                                                  playedAt: playedAt,
                                                  locationName: "Nonna's house",
-                                                 allowNegativeScores: false,
+                                      playedDateOnly: false,
+                                      allowNegativeScores: false,
                                                  in: context)
 
         #expect(game.isOpen == false)
@@ -846,7 +847,8 @@ struct ScoreCardTests {
                                                                .init(competitor: .player(bob), points: 15)],
                                                  playedAt: .now,
                                                  locationName: nil,
-                                                 allowNegativeScores: false,
+                                      playedDateOnly: false,
+                                      allowNegativeScores: false,
                                                  in: context)
 
         let winner = try #require(game.rankedParticipants.first)
@@ -873,7 +875,8 @@ struct ScoreCardTests {
                                                                .init(competitor: .team(blue), points: 10)],
                                                  playedAt: .now,
                                                  locationName: nil,
-                                                 allowNegativeScores: false,
+                                      playedDateOnly: false,
+                                      allowNegativeScores: false,
                                                  in: context)
 
         #expect(game.isDraw)
@@ -895,7 +898,8 @@ struct ScoreCardTests {
                                                                .init(competitor: .player(bob), points: 0)],
                                                  playedAt: .now,
                                                  locationName: nil,
-                                                 allowNegativeScores: false,
+                                      playedDateOnly: false,
+                                      allowNegativeScores: false,
                                                  in: context)
 
         // Registering defaults to clamping, like every other scoring path, so
@@ -909,9 +913,50 @@ struct ScoreCardTests {
                                                                    .init(competitor: .player(bob), points: 0)],
                                                      playedAt: .now,
                                                      locationName: nil,
+                                                     playedDateOnly: false,
                                                      allowNegativeScores: true,
                                                      in: context)
         #expect(negative.rankedParticipants.map(\.totalScore) == [0, -5])
+    }
+
+    /// The played-on intent is stored, not inferred from the stamp: a date-only
+    /// game stays date-only in any time zone, and a deliberate midnight keeps
+    /// its time. A game written before the field existed leaves it nil, and the
+    /// formatter falls back to the old start-of-day inference for those.
+    @Test func registeredGameRecordsWhetherTheTimeIsKnown() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        context.insert(alice)
+
+        let midnight = Calendar.current.startOfDay(for: .now)
+        let dateOnly = try GameRegistration.register(title: "Scopa",
+                                                    finalScores: [.init(competitor: .player(alice), points: 7)],
+                                                    playedAt: midnight,
+                                                    locationName: nil,
+                                                    playedDateOnly: true,
+                                                    allowNegativeScores: false,
+                                                    in: context)
+        #expect(dateOnly.playedDateOnly == true)
+        #expect(GameFormatting.dateTime(dateOnly.createdAt, dateOnly: dateOnly.playedDateOnly)
+                == midnight.formatted(date: .abbreviated, time: .omitted))
+
+        // Deliberately midnight, with the time given: the stamp is identical,
+        // so only the stored intent can tell the two apart.
+        let atMidnight = try GameRegistration.register(title: "Scopa",
+                                                      finalScores: [.init(competitor: .player(alice), points: 7)],
+                                                      playedAt: midnight,
+                                                      locationName: nil,
+                                                      playedDateOnly: false,
+                                                      allowNegativeScores: false,
+                                                      in: context)
+        #expect(atMidnight.playedDateOnly == false)
+        #expect(GameFormatting.dateTime(atMidnight.createdAt, dateOnly: atMidnight.playedDateOnly)
+                == midnight.formatted(date: .abbreviated, time: .shortened))
+
+        // Legacy game: no stored intent, so the formatter infers as before.
+        #expect(GameFormatting.dateTime(midnight, dateOnly: nil)
+                == midnight.formatted(date: .abbreviated, time: .omitted))
     }
 
     @Test func registeredGameOrdersByPlayedDateInHistory() throws {
@@ -930,6 +975,7 @@ struct ScoreCardTests {
                                                     .init(competitor: .player(bob), points: 15)],
                                       playedAt: yearAgo,
                                       locationName: nil,
+                                      playedDateOnly: false,
                                       allowNegativeScores: false,
                                       in: context)
 
@@ -950,12 +996,14 @@ struct ScoreCardTests {
 
         let blank = try GameRegistration.register(title: "A", finalScores: scores,
                                                   playedAt: .now, locationName: "   ",
-                                                 allowNegativeScores: false, in: context)
+                                      playedDateOnly: false,
+                                      allowNegativeScores: false, in: context)
         #expect(blank.locationName == nil)
 
         let padded = try GameRegistration.register(title: "B", finalScores: scores,
                                                    playedAt: .now, locationName: "  Nonna's house  ",
-                                                   allowNegativeScores: false, in: context)
+                                      playedDateOnly: false,
+                                      allowNegativeScores: false, in: context)
         #expect(padded.locationName == "Nonna's house")
     }
 

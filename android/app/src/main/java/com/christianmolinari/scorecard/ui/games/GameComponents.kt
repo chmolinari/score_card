@@ -135,7 +135,13 @@ fun GameInfoSection(game: GameWithDetails) {
                 }
             }
 
-            InfoRow(icon = Icons.Filled.Event, text = GameFormatting.dateTime(game.game.createdAt))
+            InfoRow(
+                icon = Icons.Filled.Event,
+                text = GameFormatting.dateTime(
+                    game.game.createdAt,
+                    dateOnly = game.game.playedDateOnly,
+                ),
+            )
 
             if (displayAddress != null) {
                 InfoRow(icon = Icons.Filled.Place, text = displayAddress)

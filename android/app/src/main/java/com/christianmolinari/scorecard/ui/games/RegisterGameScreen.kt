@@ -296,6 +296,9 @@ private fun RegisterGameDetails(
                     title = draft.title,
                     playedAt = playedAt,
                     locationName = locationText,
+                    // A date with no time is the only case whose time of day is
+                    // unknown; with no date at all the stamp is "now".
+                    playedDateOnly = hasDate && !hasTime,
                 )
             )
             draft.competitors.forEachIndexed { index, competitor ->

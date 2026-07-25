@@ -249,7 +249,10 @@ private fun GameRow(game: GameWithDetails, onClick: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     CaptionLabel(
-                        text = GameFormatting.dateTime(game.game.createdAt),
+                        text = GameFormatting.dateTime(
+                            game.game.createdAt,
+                            dateOnly = game.game.playedDateOnly,
+                        ),
                         icon = Icons.Filled.Event,
                     )
                     val place = game.game.locationName

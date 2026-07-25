@@ -149,7 +149,8 @@ private struct GameRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 12) {
-                    Label(GameFormatting.dateTime(game.createdAt), systemImage: "calendar")
+                    Label(GameFormatting.dateTime(game.createdAt, dateOnly: game.playedDateOnly),
+                          systemImage: "calendar")
                     if let place = game.locationName {
                         Label(place, systemImage: "mappin.and.ellipse")
                             .lineLimit(1)

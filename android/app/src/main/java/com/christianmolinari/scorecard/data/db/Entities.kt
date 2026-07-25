@@ -91,6 +91,13 @@ data class GameEntity(
     val locationName: String? = null,
     val currentDealerIndex: Int = 0,      // index into seats ordered by position
     val currentHand: Int = 1,             // 1-based hand (manche) counter
+    // Whether createdAt records a date whose time of day is unknown — a game
+    // registered without a played-on time. Inferring this from the stamp being
+    // start-of-day cannot survive a change of time zone, and cannot tell a
+    // deliberate 00:00 from "no time given", so the intent is stored. null
+    // means the row predates this column: fall back to the old inference, which
+    // is what it was written with. See docs/registering-past-games.md.
+    val playedDateOnly: Boolean? = null,
 )
 
 // One competitor in one game: EITHER playerId OR teamId is set; nameSnapshot

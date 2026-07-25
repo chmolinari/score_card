@@ -213,6 +213,10 @@ private struct RegisterGameDetailsView: View {
                                                                              hasTime: hasTime,
                                                                              selection: playedAt),
                                        locationName: locationText,
+                                       // A date with no time is the only case
+                                       // whose time of day is unknown; with no
+                                       // date at all the stamp is "now".
+                                       playedDateOnly: hasDate && !hasTime,
                                        allowNegativeScores: allowNegativeScores,
                                        in: modelContext)
         // Remember this as the most recently used name so it pre-selects next time.

@@ -56,30 +56,42 @@ The stamp is never in the future: a date of today combined with a not-yet-reache
 time clamps to now. (The date picker already caps at today, so this only catches
 the time.)
 
-### The date-only marker, and what it cannot express
+### The date-only marker is stored, not inferred
 
-"Date known, time unknown" is encoded as *the stamp being the start of its local
-day*, and the display layer renders such a stamp as a date with no time. This is
-inferred from the value; nothing separate records it. Two consequences follow,
-and both ports must behave the same way about them:
+Whether the time of day is meaningful is recorded on the game itself, as a
+**nullable** flag (`playedDateOnly` on iOS, the `playedDateOnly` column on
+Android):
 
-1. **Compare against the zone's actual start of day, not a literal midnight.**
-   On a day when the clock springs forward at 00:00, local midnight does not
-   exist and start-of-day is 01:00. Testing for literal midnight would miss the
-   marker and show a time the user explicitly declined to give.
-2. **A user who deliberately sets the time to 12:00 AM cannot be distinguished
-   from one who set no time**, and their game renders as date-only. This is
-   accepted: midnight is a rare thing to record deliberately, and the alternative
-   costs a stored field.
+| Value | Meaning | Rendered as |
+|---|---|---|
+| `true` | Date known, time unknown | Date only |
+| `false` | The stamp's time is real | Date and time |
+| absent / `null` | Recorded before the flag existed | Inferred from the stamp being start-of-day |
 
-Both are consequences of inferring the marker rather than storing it. A game also
-carries no record of the zone its stamp was created in, so a user who changes
-time zone between registering and viewing sees a date-only game shift — the
-marker no longer matches start-of-day in the new zone, and both the rendered day
-and a spurious time can change. Fixing this properly means storing the intent
-explicitly (a "date only" flag, or the originating zone) as an optional field, in
-which case the backup format version can stay unchanged and older readers ignore
-it. Until then, treat it as a known limitation rather than a per-platform bug.
+Storing the intent rather than inferring it fixes two things inference cannot:
+
+1. **A change of time zone.** A stamp is an absolute instant, so start-of-day in
+   the zone it was created in is some other time of day elsewhere. A user who
+   registers a game in Rome and opens it in New York keeps seeing a date-only
+   game, instead of the day shifting and a time appearing.
+2. **A deliberate midnight.** Someone who genuinely sets the time to 00:00 is now
+   distinguishable from someone who set no time, and their game keeps its time.
+
+The fallback matters: games recorded before the flag existed carry no value, and
+must keep rendering exactly as they did — by the start-of-day inference. Readers
+must therefore treat "absent" as its own case, not as `false`.
+
+A consequence of the inference, which the fallback still carries for old games:
+comparing against a literal midnight is wrong, because a date-only stamp is built
+with start-of-day, and on a day when the clock springs forward at 00:00 local
+midnight does not exist. Compare against the zone's start of day instead.
+
+### Backup
+
+The flag travels in the backup as an optional `playedDateOnly` on each game.
+Optional in both directions — absent means "recorded before the field existed",
+which is exactly the fallback case — so the format version is deliberately
+unchanged and a reader that predates the field ignores it.
 
 ## Related documents
 

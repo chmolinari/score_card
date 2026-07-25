@@ -42,6 +42,7 @@ enum GameRegistration {
                          finalScores: [FinalScore],
                          playedAt: Date,
                          locationName: String?,
+                         playedDateOnly: Bool,
                          // No default: a transcribed total must state which
                          // policy it was written under, so dropping the argument
                          // is a compile error rather than a silent revert to
@@ -51,6 +52,7 @@ enum GameRegistration {
         let game = Game(title: title)
         game.createdAt = playedAt
         game.closedAt = playedAt
+        game.playedDateOnly = playedDateOnly
 
         let trimmedLocation = locationName?.trimmingCharacters(in: .whitespacesAndNewlines)
         game.locationName = (trimmedLocation?.isEmpty ?? true) ? nil : trimmedLocation

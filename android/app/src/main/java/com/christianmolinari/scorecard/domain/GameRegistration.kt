@@ -40,7 +40,12 @@ object GameRegistration {
     // (the phone's current position says nothing about where a past game was
     // played). createdAt == closedAt is also what hides the meaningless
     // "Ended … · less than a minute" line in the game info section.
-    fun game(title: String, playedAt: Instant, locationName: String?): GameEntity =
+    fun game(
+        title: String,
+        playedAt: Instant,
+        locationName: String?,
+        playedDateOnly: Boolean,
+    ): GameEntity =
         GameEntity(
             title = title,
             hasTarget = false,
@@ -48,6 +53,7 @@ object GameRegistration {
             createdAt = playedAt,
             closedAt = playedAt,
             locationName = normalizedLocation(locationName),
+            playedDateOnly = playedDateOnly,
         )
 
     // One participant per competitor, in selection order (that order becomes

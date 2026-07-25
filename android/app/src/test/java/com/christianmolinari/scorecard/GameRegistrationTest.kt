@@ -48,6 +48,7 @@ class GameRegistrationTest {
             title = "Scopa",
             playedAt = playedAt,
             locationName = null,
+            playedDateOnly = false,
         ).copy(id = 1)
         val participants = finals.mapIndexed { index, (player, points) ->
             val competitor = GameCompetitor.PlayerCompetitor(player)
@@ -196,11 +197,11 @@ class GameRegistrationTest {
 
     @Test
     fun registeredGameNormalizesLocation() {
-        assertNull(GameRegistration.game("Scopa", playedAt, locationName = null).locationName)
-        assertNull(GameRegistration.game("Scopa", playedAt, locationName = "   ").locationName)
+        assertNull(GameRegistration.game("Scopa", playedAt, locationName = null, playedDateOnly = false).locationName)
+        assertNull(GameRegistration.game("Scopa", playedAt, locationName = "   ", playedDateOnly = false).locationName)
         assertEquals(
             "Nonna's place",
-            GameRegistration.game("Scopa", playedAt, locationName = "  Nonna's place  ").locationName,
+            GameRegistration.game("Scopa", playedAt, locationName = "  Nonna's place  ", playedDateOnly = false).locationName,
         )
     }
 
@@ -245,6 +246,32 @@ class GameRegistrationTest {
             DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
                 .withZone(zone).format(evening),
             GameFormatting.dateTime(evening, zone),
+        )
+    }
+
+    // The played-on intent is stored, not inferred: a date-only game stays
+    // date-only in any zone, and a deliberate 00:00 keeps its time. A row
+    // written before the column existed leaves it null, and the formatter falls
+    // back to the old start-of-day inference for those.
+    @Test
+    fun storedPlayedDateOnlyBeatsInferringFromTheStamp() {
+        val midnight = LocalDate.of(2025, 5, 4).atStartOfDay(zone).toInstant()
+        val dateOnlyText =
+            DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withZone(zone).format(midnight)
+        val withTimeText = DateTimeFormatter
+            .ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+            .withZone(zone).format(midnight)
+
+        // Same instant either way — only the stored intent separates them.
+        assertEquals(dateOnlyText, GameFormatting.dateTime(midnight, zone, dateOnly = true))
+        assertEquals(withTimeText, GameFormatting.dateTime(midnight, zone, dateOnly = false))
+        // Legacy row: inferred, as before.
+        assertEquals(dateOnlyText, GameFormatting.dateTime(midnight, zone, dateOnly = null))
+
+        // The builder records what the screen was told.
+        assertEquals(
+            true,
+            GameRegistration.game("Scopa", midnight, null, playedDateOnly = true).playedDateOnly,
         )
     }
 

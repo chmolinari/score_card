@@ -26,6 +26,19 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+// v2 -> v3: added games.playedDateOnly, recording whether a game's played-on
+// stamp has a meaningful time of day. Nullable and additive — existing rows read
+// as null, which the display layer treats as "infer it the old way".
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // No DEFAULT clause: the entity declares none, so Room's expected
+        // schema has no default and SQLite would otherwise record one and fail
+        // validation on upgrade. A nullable column added this way is NULL for
+        // every existing row, which is exactly the "predates the column" case.
+        db.execSQL("ALTER TABLE `games` ADD COLUMN `playedDateOnly` INTEGER")
+    }
+}
+
 @Database(
     entities = [
         PlayerEntity::class,
@@ -38,7 +51,7 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         SeatEntity::class,
         GameEditEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(InstantConverters::class)
@@ -52,7 +65,7 @@ abstract class ScoreCardDatabase : RoomDatabase() {
     companion object {
         fun build(context: Context): ScoreCardDatabase =
             Room.databaseBuilder(context, ScoreCardDatabase::class.java, "scorecard.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

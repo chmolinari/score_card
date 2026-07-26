@@ -1301,4 +1301,59 @@ struct ScoreCardTests {
         #expect(dto.currentDealerIndex == nil)
         #expect(dto.currentHand == nil)
     }
+
+    // MARK: In-app help
+
+    /// The topic identifiers and the order they appear in are the cross-platform
+    /// contract with the Android port — both transcriptions of
+    /// `docs/help-content.md` are pinned by a test like this one, so adding,
+    /// removing or reordering a topic fails on both sides until both are updated.
+    @Test func helpTopicsAreInTheSpecifiedOrder() {
+        #expect(HelpTopic.all.map(\.id) == [
+            "gettingStarted",
+            "startingGame",
+            "keepingScore",
+            "handsAndDealer",
+            "finishingGame",
+            "correctingResult",
+            "registeringPastGame",
+            "playersAndTeams",
+            "dataAndBackups"
+        ])
+    }
+
+    @Test func helpTopicIdentifiersAreUnique() {
+        let identifiers = HelpTopic.all.map(\.id)
+        #expect(Set(identifiers).count == identifiers.count)
+    }
+
+    /// Every topic has to be listable and openable: a blank title leaves an empty
+    /// row in the index, and no blocks leaves an empty page behind it.
+    @Test func helpTopicsHaveATitleAndContent() {
+        for topic in HelpTopic.all {
+            #expect(!topic.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                    "Topic \(topic.id) has no title")
+            #expect(!topic.blocks.isEmpty, "Topic \(topic.id) has no blocks")
+        }
+    }
+
+    /// No block may render as nothing: transcription slips (a dropped paragraph,
+    /// an empty list, a stray blank item) show up here rather than on screen.
+    @Test func helpBlocksCarryText() {
+        for topic in HelpTopic.all {
+            for block in topic.blocks {
+                switch block {
+                case .paragraph(let text), .note(let text):
+                    #expect(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                            "Topic \(topic.id) has a blank paragraph or note")
+                case .steps(let items), .bullets(let items):
+                    #expect(!items.isEmpty, "Topic \(topic.id) has an empty list")
+                    for item in items {
+                        #expect(!item.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                "Topic \(topic.id) has a blank list item")
+                    }
+                }
+            }
+        }
+    }
 }

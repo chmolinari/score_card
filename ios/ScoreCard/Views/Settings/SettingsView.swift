@@ -54,6 +54,16 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        HelpView()
+                    } label: {
+                        Label("How to Use ScoreCard", systemImage: "questionmark.circle")
+                    }
+                } footer: {
+                    Text("A guide to setting up a game, keeping score hand by hand, and correcting a result after the game is over.")
+                }
+
+                Section {
                     Picker("Dealing order", selection: $dealingDirection) {
                         ForEach(DealingDirection.allCases) { direction in
                             Label(direction.label, systemImage: direction.systemImage).tag(direction)

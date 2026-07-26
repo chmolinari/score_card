@@ -30,6 +30,8 @@ import com.christianmolinari.scorecard.ui.games.RegisterGameScreen
 import com.christianmolinari.scorecard.ui.games.ScoreboardScreen
 import com.christianmolinari.scorecard.ui.players.PlayersScreen
 import com.christianmolinari.scorecard.ui.settings.BackupListScreen
+import com.christianmolinari.scorecard.ui.settings.HelpScreen
+import com.christianmolinari.scorecard.ui.settings.HelpTopicScreen
 import com.christianmolinari.scorecard.ui.settings.SettingsScreen
 import com.christianmolinari.scorecard.ui.teams.TeamsScreen
 
@@ -107,6 +109,7 @@ fun ScoreCardApp(container: AppContainer) {
                 SettingsScreen(
                     container = container,
                     onOpenBackups = { navController.navigate("backups") },
+                    onOpenHelp = { navController.navigate("help") },
                 )
             }
             composable("newGame") {
@@ -166,6 +169,23 @@ fun ScoreCardApp(container: AppContainer) {
             composable("backups") {
                 BackupListScreen(
                     container = container,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable("help") {
+                HelpScreen(
+                    onOpenTopic = { navController.navigate("help/$it") },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = "help/{topicId}",
+                arguments = listOf(navArgument("topicId") { type = NavType.StringType }),
+            ) { entry ->
+                HelpTopicScreen(
+                    // The topic identifier is the cross-platform contract key,
+                    // so the route survives topics being reordered.
+                    topicId = requireNotNull(entry.arguments).getString("topicId").orEmpty(),
                     onBack = { navController.popBackStack() },
                 )
             }

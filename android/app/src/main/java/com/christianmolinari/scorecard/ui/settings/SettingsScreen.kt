@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.QuestionMark
@@ -80,7 +81,7 @@ internal data class StatusMessage(val title: String, val body: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit) {
+fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit, onOpenHelp: () -> Unit) {
     val players by container.database.playerDao().observeAll()
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val teams by container.database.teamDao().observeAllWithMembers()
@@ -201,6 +202,19 @@ fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit) {
                                 )
                             }
                         }
+                    }
+                }
+
+                item(key = "help") {
+                    SettingsSection(
+                        footer = "A guide to setting up a game, keeping score hand by hand, and " +
+                            "correcting a result after the game is over.",
+                    ) {
+                        ActionRow(
+                            icon = Icons.AutoMirrored.Filled.HelpOutline,
+                            label = "How to Use ScoreCard",
+                            onClick = onOpenHelp,
+                        )
                     }
                 }
 

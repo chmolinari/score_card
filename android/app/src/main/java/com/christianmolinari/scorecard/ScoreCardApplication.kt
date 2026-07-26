@@ -12,8 +12,13 @@ import com.christianmolinari.scorecard.location.LocationCapture
 // each service for the whole app. This mirrors the iOS app, which keeps a
 // single SwiftData ModelContainer alive in a stored property and injects one
 // shared LocationManager via the environment.
-class AppContainer(context: Context) {
-    val database: ScoreCardDatabase = ScoreCardDatabase.build(context)
+class AppContainer(
+    context: Context,
+    // Injectable only so instrumented tests can drive the screens against an
+    // in-memory database instead of the one holding the user's games.
+    // Production never passes it and still gets the single shared database.
+    val database: ScoreCardDatabase = ScoreCardDatabase.build(context),
+) {
     val prefs: Prefs = Prefs(context)
     val backupService: BackupService = BackupService(database)
     val backupStorage: BackupStorage = BackupStorage(context)

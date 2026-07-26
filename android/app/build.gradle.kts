@@ -80,4 +80,8 @@ dependencies {
     androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // Supplies the ComponentActivity that createComposeRule launches into.
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

@@ -1,9 +1,26 @@
 # ScoreCard Android port — authoring contract
 
-This file is the single source of truth for the Android port. Every authoring
-agent MUST read it fully and code against the signatures below EXACTLY (names,
-parameters, types), because other files are written in parallel against the
-same contract. The iOS app at `../ios/ScoreCard/` is the reference
+> **Status: historical. Superseded by the code itself.**
+>
+> This document was the parallel-authoring contract used to write the Android
+> port in one pass. That port is complete and has since been changed, so this
+> file is a record of the original plan, **not** a description of the app as it
+> stands. It is kept because the rationale behind many decisions is written down
+> here and nowhere else.
+>
+> Do not code against it. For current guidance use `android/CLAUDE.md`, the
+> platform-neutral specs in `docs/`, and the source. Where this file and the code
+> disagree, **the code wins** — at least one signature here was already found to
+> be wrong (`DISTANT_PAST`, corrected in place below) and others may be. It also
+> predates features added after the port, including the in-app help page
+> (`docs/help-content.md`).
+
+The original contract follows, unchanged except for corrections marked
+`SUPERSEDED`.
+
+Every authoring agent MUST read it fully and code against the signatures below
+EXACTLY (names, parameters, types), because other files are written in parallel
+against the same contract. The iOS app at `../ios/ScoreCard/` is the reference
 implementation — read the iOS files listed for your assignment and match their
 behavior precisely unless this spec says otherwise.
 
@@ -25,9 +42,12 @@ iOS reference: `Models/Player.swift`, `Team.swift`, `Game.swift`, `GameParticipa
 ### `data/db/Entities.kt`
 
 ```kotlin
-// Matches Swift Date.distantPast ("0000-12-30T00:00:00Z") so never-used game
-// names sort identically across platforms and survive backup round-trips.
-val DISTANT_PAST: Instant = Instant.parse("0000-12-30T00:00:00Z")
+// SUPERSEDED — this value was wrong and was corrected during the port. The
+// shipped constant is 0001-01-01T00:00:00Z, which is what iOS's
+// JSONEncoder.iso8601 actually emits for Date.distantPast; 0000-12-30 is only
+// what Date.description prints. Using the value below breaks the backup
+// round-trip for never-used game names. See android/CLAUDE.md.
+val DISTANT_PAST: Instant = Instant.parse("0001-01-01T00:00:00Z")
 
 @Entity(tableName = "players")
 data class PlayerEntity(

@@ -7,6 +7,11 @@ required on their device (unlike a direct Xcode/`devicectl` install).
 > Last reviewed: 2026-06-06 against Apple's App Store Connect / CloudKit
 > documentation. The App Store Connect web UI changes often; treat exact button
 > names as approximate.
+>
+> The ScoreCard-specific facts below (bundle id, team, version, entitlements,
+> privacy strings, and the still-absent `ITSAppUsesNonExemptEncryption`) were
+> re-verified against this repository on 2026-07-26 and were all still correct.
+> The Apple-side procedure has not been re-checked since the date above.
 
 See the [Appendix: Acronyms and abbreviations](#appendix-acronyms-and-abbreviations)
 at the end for any term in square-bracket form.

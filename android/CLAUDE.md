@@ -45,6 +45,10 @@ Run all commands from this directory (`android/`). Needs a JDK 17+ and an Androi
 # Run the JVM unit tests (domain + backup)
 ./gradlew :app:testDebugUnitTest
 
+# Run the instrumented tests (the Room migrations) — needs a booted emulator
+# or an attached device; `emulator -avd sc35` then wait for sys.boot_completed
+./gradlew :app:connectedDebugAndroidTest
+
 # Install on a running emulator/device
 ./gradlew :app:installDebug
 
@@ -58,6 +62,7 @@ There is a Gradle wrapper (`./gradlew`); a system `gradle` is not required. The 
 
 - **Manual DI**: anything new that needs the database/prefs/backup/location gets reached through `AppContainer`; don't construct a second `ScoreCardDatabase`.
 - **No ViewModels by default**: keep state in the composable, collect DAO flows, mutate via suspend DAO calls. Match the existing screens before introducing a new pattern.
-- **Room schema changes**: bump `@Database(version=…)` and supply a migration (or `fallbackToDestructiveMigration` only in dev). `exportSchema = true` and `app/schemas/` is committed (via the `room.schemaLocation` KSP arg) — a hand-written migration that drifts from the entities only fails at runtime on *upgrading* devices, never on a fresh install or in the JVM suite, so the diffable schema is the guard. Check a new migration's SQL against the generated `createSql` for that version. Any change to the entity set or the `BackupSnapshot` DTOs is a **cross-platform breaking change** — see the root `CLAUDE.md` and keep the iOS side in sync.
+- **Room schema changes**: bump `@Database(version=…)` and supply a migration (or `fallbackToDestructiveMigration` only in dev). `exportSchema = true` and `app/schemas/` is committed (via the `room.schemaLocation` KSP arg) — a hand-written migration that drifts from the entities only fails at runtime on *upgrading* devices, never on a fresh install or in the JVM suite, so the diffable schema is the guard. Check a new migration's SQL against the generated `createSql` for that version, and add a case to `MigrationTest` (see below) — a new version means a new `<n>.json` and a new upgrade path, both of which want covering. `1.json` predates the schema export and was recovered by rebuilding commit `27c28da` with `exportSchema = true`, not hand-written; it is byte-identical to `2.json` minus `game_edits`. Any change to the entity set or the `BackupSnapshot` DTOs is a **cross-platform breaking change** — see the root `CLAUDE.md` and keep the iOS side in sync.
 - **Unit tests** (`app/src/test/`) are pure JVM JUnit 4 — construct the Room entity/relation data classes directly; don't pull in Android framework types. The domain and backup layers are designed to be testable this way.
+- **Instrumented tests** (`app/src/androidTest/`) exist for the one thing the JVM suite structurally cannot cover: the migrations, which need a real SQLite and an actual upgrade. `MigrationTest` seeds a database at an old version with raw SQL (the entity classes have moved on and cannot populate an old schema), migrates it, and checks both the schema and the surviving rows. The `androidTest` source set has `schemas/` on its `assets.srcDirs` so the committed JSON ships inside the test APK. Note that `runMigrationsAndValidate` alone does **not** catch a stray `DEFAULT` clause — verified by re-introducing the bug — so a new migration wants an explicit assertion on the value existing rows end up with, not just schema validation.
 - **Deliberate platform adaptations** (not bugs to "fix" back toward iOS): seating reorder uses up/down arrows instead of drag; game detail shows the location name but no map; Settings has no sync status.

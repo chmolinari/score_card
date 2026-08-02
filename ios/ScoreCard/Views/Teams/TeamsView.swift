@@ -15,6 +15,10 @@ struct TeamsView: View {
 
     @State private var editingTeam: Team?
     @State private var isAddingTeam = false
+    /// Teams a swipe has proposed deleting, held until the user confirms.
+    /// Resolved to objects up front — re-reading `sortedTeams` by index while
+    /// deleting would walk a list that is shrinking underneath it.
+    @State private var pendingDeletion: [Team] = []
 
     /// Teams in the user's chosen order. "Score" sorts can't live in the
     /// `@Query` because the tally is computed on the fly, so we re-sort here.
@@ -72,7 +76,42 @@ struct TeamsView: View {
             .sheet(item: $editingTeam) { team in
                 TeamEditView(team: team)
             }
+            .confirmationDialog(deletionTitle,
+                                isPresented: showingDeleteConfirmation,
+                                titleVisibility: .visible) {
+                Button("Delete Team", role: .destructive) { commitDeletion() }
+                Button("Cancel", role: .cancel) { pendingDeletion = [] }
+            } message: {
+                Text(deletionMessage)
+            }
         }
+    }
+
+    // MARK: - Deletion
+
+    private var showingDeleteConfirmation: Binding<Bool> {
+        Binding(get: { !pendingDeletion.isEmpty },
+                set: { if !$0 { pendingDeletion = [] } })
+    }
+
+    private var deletionTitle: String {
+        guard let team = pendingDeletion.first else { return "" }
+        return pendingDeletion.count == 1 ? "Delete \(team.name)?" : "Delete \(pendingDeletion.count) teams?"
+    }
+
+    /// Makes the blast radius explicit: unlike deleting a player, this removes
+    /// only the grouping — the people and the past results both survive.
+    private var deletionMessage: String {
+        let bodies = pendingDeletion.map {
+            RosterCheck.teamDeletionMessage(teamName: $0.name, memberCount: $0.sortedMembers.count)
+        }
+        return bodies.joined(separator: " ")
+            + " Because data syncs to iCloud, this also removes them from your other devices. This can't be undone."
+    }
+
+    private func commitDeletion() {
+        for team in pendingDeletion { modelContext.delete(team) }
+        pendingDeletion = []
     }
 
     /// A menu to pick how the list is ordered; the choice is remembered.
@@ -90,11 +129,12 @@ struct TeamsView: View {
         .accessibilityValue(sortOrder.label)
     }
 
+    /// Swiping proposes a deletion rather than performing it; the confirmation
+    /// commits. Offsets index into the displayed (sorted) list, not the raw
+    /// query, so they are resolved to objects here while the list is still whole.
     private func deleteTeams(at offsets: IndexSet) {
-        // Offsets index into the displayed (sorted) list, not the raw query.
-        for index in offsets {
-            modelContext.delete(sortedTeams[index])
-        }
+        let sorted = sortedTeams
+        pendingDeletion = offsets.compactMap { sorted.indices.contains($0) ? sorted[$0] : nil }
     }
 }
 

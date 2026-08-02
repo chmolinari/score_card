@@ -286,13 +286,17 @@ fun EmptyState(
 fun SwipeToDeleteBox(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    // When true the swipe only reports intent: the row snaps back instead of
+    // dismissing, so the caller can confirm first and delete itself. Off by
+    // default so the call sites that delete outright keep their behaviour.
+    confirmFirst: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val state = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) {
                 onDelete()
-                true
+                !confirmFirst
             } else {
                 false
             }

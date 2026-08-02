@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -49,6 +51,7 @@ import com.christianmolinari.scorecard.data.db.PlayerEntity
 import com.christianmolinari.scorecard.domain.CompetitorSortOrder
 import com.christianmolinari.scorecard.domain.CompetitorSorter
 import com.christianmolinari.scorecard.domain.NameComparator
+import com.christianmolinari.scorecard.domain.RosterCheck
 import com.christianmolinari.scorecard.domain.Tally
 import com.christianmolinari.scorecard.domain.playerTally
 import com.christianmolinari.scorecard.ui.components.AppBackground
@@ -75,6 +78,8 @@ fun PlayersScreen(container: AppContainer) {
 
     var editingPlayer by remember { mutableStateOf<PlayerEntity?>(null) }
     var isAddingPlayer by remember { mutableStateOf(false) }
+    // A player a swipe has proposed deleting, held until the user confirms.
+    var pendingDeletion by remember { mutableStateOf<PlayerEntity?>(null) }
 
     // Players in the user's chosen order. "Score" sorts can't live in the
     // database query because the tally is computed on the fly, so we re-sort here.
@@ -136,10 +141,10 @@ fun PlayersScreen(container: AppContainer) {
                 ) {
                     items(sortedPlayers, key = { it.id }) { player ->
                         // Deletion targets the displayed (sorted) row, not the raw query order.
+                        // The swipe only proposes it; the confirmation commits.
                         SwipeToDeleteBox(
-                            onDelete = {
-                                scope.launch { container.database.playerDao().delete(player) }
-                            },
+                            onDelete = { pendingDeletion = player },
+                            confirmFirst = true,
                         ) {
                             PlayerRow(
                                 player = player,
@@ -166,6 +171,36 @@ fun PlayersScreen(container: AppContainer) {
             container = container,
             existing = player,
             onDismiss = { editingPlayer = null },
+        )
+    }
+
+    // Spells out what else the delete changes: which teams lose a member, and
+    // which are left too small to play. No iCloud sentence — Android has no sync.
+    pendingDeletion?.let { player ->
+        AlertDialog(
+            onDismissRequest = { pendingDeletion = null },
+            title = { Text("Delete ${player.name}?") },
+            text = {
+                Text(
+                    RosterCheck.playerDeletionMessage(
+                        playerName = player.name,
+                        impacts = RosterCheck.impactOfDeleting(player, teams),
+                    ) + " This can't be undone.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeletion = null
+                        scope.launch { container.database.playerDao().delete(player) }
+                    },
+                ) {
+                    Text("Delete Player", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeletion = null }) { Text("Cancel") }
+            },
         )
     }
 }

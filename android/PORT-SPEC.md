@@ -544,7 +544,7 @@ row's name matches case-insensitively (show the iOS error line in red, e.g.
 "A player named “X” already exists."); editing updates in place (onCreated NOT
 called), creating inserts then calls onCreated with the inserted entity
 (re-read with the generated id). Team dialog: member checklist of all players
-(observed flow), needs ≥1 member, footer "A team needs at least one member.",
+(observed flow), needs ≥2 members, footer "A team needs at least two members.",
 inline "New Player" button opening a nested PlayerEditDialog that auto-selects
 the new player. Creating a player/team/name stamps createdAt = Instant.now();
 new GameName gets lastUsedAt = DISTANT_PAST.

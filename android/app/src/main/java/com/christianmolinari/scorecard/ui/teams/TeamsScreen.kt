@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,6 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -47,8 +49,10 @@ import com.christianmolinari.scorecard.AppContainer
 import com.christianmolinari.scorecard.data.db.TeamWithMembers
 import com.christianmolinari.scorecard.domain.CompetitorSortOrder
 import com.christianmolinari.scorecard.domain.CompetitorSorter
+import com.christianmolinari.scorecard.domain.RosterCheck
 import com.christianmolinari.scorecard.domain.Tally
 import com.christianmolinari.scorecard.domain.rosterSummary
+import com.christianmolinari.scorecard.domain.sortedMembers
 import com.christianmolinari.scorecard.domain.teamTally
 import com.christianmolinari.scorecard.ui.components.AppBackground
 import com.christianmolinari.scorecard.ui.components.Avatar
@@ -71,6 +75,8 @@ fun TeamsScreen(container: AppContainer) {
         .collectAsStateWithLifecycle(initialValue = CompetitorSortOrder.NameAscending)
 
     var editingTeam by remember { mutableStateOf<TeamWithMembers?>(null) }
+    // A team a swipe has proposed deleting, held until the user confirms.
+    var pendingDeletion by remember { mutableStateOf<TeamWithMembers?>(null) }
     var isAddingTeam by remember { mutableStateOf(false) }
 
     // Teams in the user's chosen order. "Score" sorts can't live in the
@@ -123,10 +129,10 @@ fun TeamsScreen(container: AppContainer) {
                 ) {
                     items(sortedTeams, key = { it.team.id }) { team ->
                         // Deletion targets the displayed (sorted) row, not the raw query order.
+                        // The swipe only proposes it; the confirmation commits.
                         SwipeToDeleteBox(
-                            onDelete = {
-                                scope.launch { container.database.teamDao().delete(team.team) }
-                            },
+                            onDelete = { pendingDeletion = team },
+                            confirmFirst = true,
                         ) {
                             TeamRow(
                                 team = team,
@@ -152,6 +158,36 @@ fun TeamsScreen(container: AppContainer) {
             container = container,
             existing = team,
             onDismiss = { editingTeam = null },
+        )
+    }
+
+    // Makes the blast radius explicit: unlike deleting a player, this removes
+    // only the grouping — the people and the past results both survive.
+    pendingDeletion?.let { team ->
+        AlertDialog(
+            onDismissRequest = { pendingDeletion = null },
+            title = { Text("Delete ${team.team.name}?") },
+            text = {
+                Text(
+                    RosterCheck.teamDeletionMessage(
+                        teamName = team.team.name,
+                        memberCount = team.sortedMembers.size,
+                    ) + " This can't be undone.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeletion = null
+                        scope.launch { container.database.teamDao().delete(team.team) }
+                    },
+                ) {
+                    Text("Delete Team", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeletion = null }) { Text("Cancel") }
+            },
         )
     }
 }

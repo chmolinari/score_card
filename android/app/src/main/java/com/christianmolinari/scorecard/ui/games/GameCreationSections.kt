@@ -22,12 +22,14 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.christianmolinari.scorecard.AppContainer
@@ -39,6 +41,7 @@ import com.christianmolinari.scorecard.data.db.TeamWithMembers
 import com.christianmolinari.scorecard.domain.FrequentPicker
 import com.christianmolinari.scorecard.domain.GameCompetitor
 import com.christianmolinari.scorecard.domain.GameNamePicker
+import com.christianmolinari.scorecard.domain.RosterCheck
 import com.christianmolinari.scorecard.domain.matches
 import com.christianmolinari.scorecard.domain.playerUsageCount
 import com.christianmolinari.scorecard.domain.rosterSummary
@@ -167,12 +170,23 @@ fun LazyListScope.competitorSelectionSections(
     fun LazyListScope.teamRows(source: List<TeamWithMembers>, keyPrefix: String) {
         items(source, key = { "$keyPrefix-${it.team.id}" }) { team ->
             val competitor = GameCompetitor.TeamCompetitor(team)
+            // A team left below the minimum (by a deletion, or arriving from an
+            // older backup) can't be created any more but can still exist, so it
+            // is shown with the reason and the fix rather than silently omitted.
+            val underStrength = RosterCheck.isUnderStrength(team)
             SelectableRow(
                 name = team.team.name,
                 subtitle = team.rosterSummary,
                 icon = Icons.Filled.Groups,
                 selected = isSelected(competitor),
                 onClick = { onToggle(competitor) },
+                enabled = !underStrength,
+                warning = if (underStrength) {
+                    val has = if (team.sortedMembers.size == 1) "Only 1 member" else "No members"
+                    "$has — add another on the Teams tab"
+                } else {
+                    null
+                },
             )
         }
     }
@@ -278,23 +292,37 @@ fun SelectableRow(
     icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
+    // A row that exists but can't be chosen, with the reason why. Defaults keep
+    // every other caller (game names, players) exactly as it was.
+    enabled: Boolean = true,
+    warning: String? = null,
 ) {
-    CardTile(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+    CardTile(modifier = Modifier.fillMaxWidth(), onClick = { if (enabled) onClick() }) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                icon,
+                if (warning != null) Icons.Filled.Warning else icon,
                 contentDescription = null,
-                tint = ThemeColors.accent,
+                tint = if (warning != null) MaterialTheme.colorScheme.error else ThemeColors.accent,
                 modifier = Modifier.size(24.dp),
             )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(name)
+                Text(
+                    name,
+                    color = if (enabled) Color.Unspecified else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 if (subtitle != null) {
                     Text(
                         subtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (warning != null) {
+                    Text(
+                        warning,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
             }

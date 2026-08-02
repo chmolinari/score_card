@@ -456,7 +456,7 @@ extension HelpTopic {
             .bullets([
                 """
                 Add someone with the + button at the top of the list — "Add Player" or "Add \
-                Team". Names have to be unique, and a team needs at least one member, so \
+                Team". Names have to be unique, and a team needs at least two members, so \
                 "Save" stays dimmed until both are true.
                 """,
                 """
@@ -465,7 +465,10 @@ extension HelpTopic {
                 missing person on the spot.
                 """,
                 """
-                Swipe a row to delete that player or team.
+                Swipe a row to delete that player or team. The app asks first, and tells you \
+                which teams the change affects — deleting a player removes them from every team \
+                they are in, and a team left with fewer than two members can't be picked for a \
+                game until you add someone. Deleting never changes the result of a past game.
                 """
             ]),
             .paragraph("""

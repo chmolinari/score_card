@@ -38,6 +38,7 @@ import com.christianmolinari.scorecard.data.db.PlayerEntity
 import com.christianmolinari.scorecard.data.db.TeamEntity
 import com.christianmolinari.scorecard.data.db.TeamWithMembers
 import com.christianmolinari.scorecard.domain.NameComparator
+import com.christianmolinari.scorecard.domain.RosterCheck
 import java.time.Instant
 import kotlinx.coroutines.launch
 
@@ -166,7 +167,9 @@ fun TeamEditDialog(
         }
         if (clashes) "A team named “$trimmed” already exists." else null
     }
-    val canSave = trimmed.isNotEmpty() && selectedIds.isNotEmpty() && nameError == null
+    val canSave = trimmed.isNotEmpty() &&
+        selectedIds.size >= RosterCheck.MINIMUM_TEAM_SIZE &&
+        nameError == null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -241,7 +244,7 @@ fun TeamEditDialog(
                     Text("New Player")
                 }
                 Text(
-                    "A team needs at least one member.",
+                    "A team needs at least two members.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -344,12 +344,15 @@ cross-platform contract — see "Keeping the two apps in step" below.
 **Bullets.**
 
 - Add someone with the + button at the top of the list — "Add Player" or "Add
-  Team". Names have to be unique, and a team needs at least one member, so
+  Team". Names have to be unique, and a team needs at least two members, so
   "Save" stays dimmed until both are true.
 - Tap a row to edit it: rename a player, or rename a team and tick and untick who
   is in it. While you are building a team you can tap "New Player" to create a
   missing person on the spot.
-- Swipe a row to delete that player or team.
+- Swipe a row to delete that player or team. The app asks first, and tells you
+  which teams the change affects — deleting a player removes them from every team
+  they are in, and a team left with fewer than two members can't be picked for a
+  game until you add someone. Deleting never changes the result of a past game.
 
 **Paragraph.**
 

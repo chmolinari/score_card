@@ -84,7 +84,7 @@ struct TeamEditView: View {
                 } header: {
                     Text("Members")
                 } footer: {
-                    Text("A team needs at least one member.")
+                    Text("A team needs at least two members.")
                 }
             }
             .navigationTitle(isEditing ? "Edit Team" : "New Team")
@@ -95,7 +95,9 @@ struct TeamEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
-                        .disabled(trimmedName.isEmpty || selectedPlayerIDs.isEmpty || nameError != nil)
+                        .disabled(trimmedName.isEmpty
+                                  || selectedPlayerIDs.count < RosterCheck.minimumTeamSize
+                                  || nameError != nil)
                 }
             }
             .sheet(isPresented: $isCreatingPlayer) {
@@ -121,7 +123,9 @@ struct TeamEditView: View {
     }
 
     private func save() {
-        guard !trimmedName.isEmpty, !selectedPlayerIDs.isEmpty, nameError == nil else { return }
+        guard !trimmedName.isEmpty,
+              selectedPlayerIDs.count >= RosterCheck.minimumTeamSize,
+              nameError == nil else { return }
         let members = allPlayers.filter { selectedPlayerIDs.contains($0.persistentModelID) }
         if let team {
             team.name = trimmedName

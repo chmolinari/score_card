@@ -304,4 +304,27 @@ class BackupJsonTest {
             BackupCodec.decode("not a backup")
         }
     }
+
+    @Test
+    fun aTeamWithOneMemberStillDecodes() {
+        // The two-member rule is an editing rule, not a storage invariant. Older
+        // backups and the iOS app can both carry a smaller team — a deleted
+        // player leaves one behind — and decoding must keep accepting it rather
+        // than failing the whole restore.
+        val shrunk = """
+            {
+              "version" : 1,
+              "exportedAt" : "2026-08-01T16:14:58Z",
+              "players" : [ { "name" : "Bassano", "createdAt" : "2026-06-02T13:05:28Z" } ],
+              "teams" : [ { "name" : "Bassano e Pierangela",
+                            "createdAt" : "2026-06-02T13:38:00Z",
+                            "memberIndices" : [ 0 ] } ],
+              "games" : [ ]
+            }
+        """.trimIndent()
+
+        val snapshot = BackupCodec.decode(shrunk)
+        assertEquals(1, snapshot.teams.size)
+        assertEquals(listOf(0), snapshot.teams[0].memberIndices)
+    }
 }

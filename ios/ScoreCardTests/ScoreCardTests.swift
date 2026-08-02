@@ -651,6 +651,104 @@ struct ScoreCardTests {
         #expect(draft.people.map(\.name) == ["Alice", "Bob", "Carol"])
     }
 
+    // MARK: - Roster guards
+
+    @Test func deletingAPlayerReportsEveryTeamItWouldShrink() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        let carol = Player(name: "Carol")
+        [alice, bob, carol].forEach(context.insert)
+        // Aces drops to one member without Alice; Trio still has two.
+        let aces = Team(name: "Aces", members: [alice, bob])
+        let trio = Team(name: "Trio", members: [alice, bob, carol])
+        [aces, trio].forEach(context.insert)
+        try context.save()
+
+        let impacts = RosterCheck.impact(ofDeleting: alice)
+        #expect(impacts == [
+            RosterCheck.TeamImpact(teamName: "Aces", remainingMembers: 1),
+            RosterCheck.TeamImpact(teamName: "Trio", remainingMembers: 2),
+        ])
+        #expect(impacts.map(\.fallsBelowMinimum) == [true, false])
+    }
+
+    @Test func aPlayerOnNoTeamsReportsNoImpact() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let solo = Player(name: "Solo")
+        context.insert(solo)
+        try context.save()
+
+        #expect(RosterCheck.impact(ofDeleting: solo).isEmpty)
+        #expect(RosterCheck.playerDeletionMessage(playerName: "Solo", impacts: [])
+                    .contains("Past game results are not affected"))
+    }
+
+    @Test func underStrengthFlagsTeamsTooSmallToPlay() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let alice = Player(name: "Alice")
+        let bob = Player(name: "Bob")
+        [alice, bob].forEach(context.insert)
+        let pair = Team(name: "Pair", members: [alice, bob])
+        let single = Team(name: "Single", members: [alice])
+        let empty = Team(name: "Empty")
+        [pair, single, empty].forEach(context.insert)
+        try context.save()
+
+        #expect(RosterCheck.isUnderStrength(pair) == false)
+        #expect(RosterCheck.isUnderStrength(single))
+        #expect(RosterCheck.isUnderStrength(empty))
+
+        // A player competitor is never under strength, whatever else is chosen.
+        let names = RosterCheck.underStrengthNames(in: [.team(pair), .team(single),
+                                                        .team(empty), .player(alice)])
+        #expect(names == ["Single", "Empty"])
+    }
+
+    @Test func deletionMessageNamesTheTeamsLeftUnplayable() {
+        let message = RosterCheck.playerDeletionMessage(
+            playerName: "Adriano",
+            impacts: [.init(teamName: "Adriano e Christian", remainingMembers: 1),
+                      .init(teamName: "Adriano e Bassano", remainingMembers: 1)])
+        #expect(message.contains("Adriano e Christian and Adriano e Bassano"))
+        #expect(message.contains("they can't be picked for a game"))
+
+        // One broken team reads in the singular.
+        let single = RosterCheck.playerDeletionMessage(
+            playerName: "Adriano",
+            impacts: [.init(teamName: "Adriano e Christian", remainingMembers: 1)])
+        #expect(single.contains("it can't be picked for a game"))
+
+        // Nothing dropping below the minimum means no warning sentence at all.
+        let intact = RosterCheck.playerDeletionMessage(
+            playerName: "Adriano",
+            impacts: [.init(teamName: "Trio", remainingMembers: 2)])
+        #expect(!intact.contains("picked for a game"))
+    }
+
+    @Test func aOneMemberTeamStillRestoresFromABackup() throws {
+        // The two-member rule is an editing rule, not a storage invariant:
+        // older backups and the other platform can both carry a smaller team,
+        // and restore must keep accepting them.
+        var snapshot = BackupSnapshot()
+        snapshot.players = [.init(name: "Alice", createdAt: .now),
+                            .init(name: "Bob", createdAt: .now)]
+        snapshot.teams = [.init(name: "Shrunk", createdAt: .now, memberIndices: [0]),
+                          .init(name: "Intact", createdAt: .now, memberIndices: [0, 1])]
+
+        let container = try makeContainer()
+        let context = container.mainContext
+        try BackupService.restore(snapshot, into: context)
+
+        let teams = try context.fetch(FetchDescriptor<Team>()).sorted { $0.name < $1.name }
+        #expect(teams.map(\.name) == ["Intact", "Shrunk"])
+        #expect(teams.map { $0.sortedMembers.count } == [2, 1])
+        #expect(RosterCheck.isUnderStrength(teams[1]))
+    }
+
     @Test func backupPreservesSeatsAndDealer() throws {
         let sourceContainer = try makeContainer()
         let source = sourceContainer.mainContext

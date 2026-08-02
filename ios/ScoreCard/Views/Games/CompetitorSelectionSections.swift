@@ -152,15 +152,29 @@ struct CompetitorSelectionSections: View {
     // MARK: - Rows
 
     private func selectableRow(for competitor: GameCompetitor, subtitle: String? = nil, systemImage: String) -> some View {
-        Button {
+        // A team left below the minimum (by a deletion, or arriving from an
+        // older backup) can't be created any more but can still exist, so it is
+        // shown with the reason and the fix rather than silently omitted.
+        let isUnderStrength: Bool = {
+            guard case .team(let team) = competitor else { return false }
+            return RosterCheck.isUnderStrength(team)
+        }()
+
+        return Button {
             selectedCompetitors = CompetitorSelectionRules.toggling(competitor, in: selectedCompetitors)
         } label: {
             HStack {
-                Image(systemName: systemImage).foregroundStyle(.tint)
+                Image(systemName: isUnderStrength ? "exclamationmark.triangle.fill" : systemImage)
+                    .foregroundStyle(isUnderStrength ? AnyShapeStyle(.orange) : AnyShapeStyle(.tint))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(competitor.name).foregroundStyle(.primary)
+                    Text(competitor.name).foregroundStyle(isUnderStrength ? .secondary : .primary)
                     if let subtitle {
                         Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if isUnderStrength {
+                        Text(underStrengthReason(for: competitor))
+                            .font(.caption)
+                            .foregroundStyle(.orange)
                     }
                 }
                 Spacer()
@@ -171,5 +185,15 @@ struct CompetitorSelectionSections: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(isUnderStrength)
+    }
+
+    /// Says what is wrong and where to fix it — the row is disabled, so without
+    /// this the user would have no way to know why.
+    private func underStrengthReason(for competitor: GameCompetitor) -> String {
+        guard case .team(let team) = competitor else { return "" }
+        let count = team.sortedMembers.count
+        let has = count == 1 ? "Only 1 member" : "No members"
+        return "\(has) — add another on the Teams tab"
     }
 }

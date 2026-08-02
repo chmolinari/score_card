@@ -90,10 +90,15 @@ final class RosterGuardUITests: XCTestCase {
 
         // A second member arms it.
         app.buttons["Bob"].firstMatch.tap()
-        app.buttons["Save"].firstMatch.tap()
-        XCTAssertFalse(field.waitForExistence(timeout: 3),
-                       "The editor should close once the team has two members")
-        XCTAssertTrue(app.staticTexts["Half A Team"].waitForExistence(timeout: 5))
+        let save = app.buttons["Save"].firstMatch
+        XCTAssertTrue(save.isEnabled,
+                      "Save should arm once two members are ticked. Field value: "
+                      + String(describing: field.value)
+                      + ". On screen: "
+                      + app.staticTexts.allElementsBoundByIndex.map(\.label).prefix(25).joined(separator: " | "))
+        save.tap()
+        waitForDisappearance(field, "The editor should close once the team has two members")
+        XCTAssertTrue(app.staticTexts["Half A Team"].waitForExistence(timeout: 10))
     }
 
     // MARK: - Delete confirmation
@@ -130,12 +135,24 @@ final class RosterGuardUITests: XCTestCase {
         let confirm = app.buttons["Delete Player"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         confirm.tap()
-        XCTAssertFalse(app.staticTexts["Alice"].waitForExistence(timeout: 3),
-                       "Confirming should remove the player")
+        waitForDisappearance(app.staticTexts["Alice"], "Confirming should remove the player")
         XCTAssertTrue(app.staticTexts["Bob"].exists, "Only the swiped row should go")
     }
 
     // MARK: - Helpers
+
+    /// Waits for an element to go away. `waitForExistence` cannot express this:
+    /// asserting `XCTAssertFalse(element.waitForExistence(timeout: 3))` passes
+    /// only if the element vanishes inside a fixed window, which turns into a
+    /// false failure whenever a full suite run makes the simulator slow.
+    @MainActor
+    private func waitForDisappearance(_ element: XCUIElement,
+                                      timeout: TimeInterval = 15,
+                                      _ message: String) {
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                             object: element)
+        XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: timeout), .completed, message)
+    }
 
     /// Rows compose their contents into one accessibility label — a team row
     /// reads "Reds, Alice & Bob", a player row "A, Alice, Reds, No games yet" —
@@ -207,9 +224,9 @@ final class RosterGuardUITests: XCTestCase {
         // few members selected) leaves the sheet up, and the name assertion
         // below would still pass by matching the text field's own contents —
         // hiding the real failure until much later in the test.
-        XCTAssertFalse(field.waitForExistence(timeout: 3),
-                       "The team editor should close once \(name) has \(members.count) members")
-        XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 5))
+        waitForDisappearance(field,
+                             "The team editor should close once \(name) has \(members.count) members")
+        XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 10))
     }
 
     @MainActor

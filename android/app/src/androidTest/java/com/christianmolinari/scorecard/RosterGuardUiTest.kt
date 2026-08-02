@@ -16,7 +16,6 @@ import com.christianmolinari.scorecard.ui.players.PlayersScreen
 import com.christianmolinari.scorecard.ui.theme.ScoreCardTheme
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Before
@@ -57,10 +56,12 @@ class RosterGuardUiTest {
         seedTeamOfTwo()
     }
 
-    @After
-    fun tearDown() {
-        database.close()
-    }
+    // Deliberately no database.close(). A JUnit @Rule wraps @After, so the
+    // compose rule disposes the composition *after* this method runs — closing
+    // the database here races the screen's still-live Flow collectors and fails
+    // with "The database ':memory:' is not open" in whichever test happens to
+    // lose. The database is in-memory and a fresh one is built per test, so
+    // letting it fall out of scope costs nothing.
 
     // Alice and Bob make up the team "Reds", so deleting either one leaves it
     // below the two-member minimum.
@@ -123,8 +124,12 @@ class RosterGuardUiTest {
         compose.onNodeWithText("Alice").performTouchInput { swipeLeft() }
         compose.waitForIdle()
         compose.onNodeWithText("Delete Player").performClick()
-        compose.waitForIdle()
 
+        // waitForIdle only settles the composition, not the DAO coroutine the
+        // confirmation launches — and that call now also reads the player's
+        // teams so the log can name them, so it is no longer instant. Wait on
+        // the database reaching the expected state instead of assuming.
+        compose.waitUntil(timeoutMillis = 5_000) { playerNames().size == 1 }
         assertEquals(listOf("Bob"), playerNames())
         // The team survives the deletion — it is simply left under strength,
         // which is what the confirmation warned about.

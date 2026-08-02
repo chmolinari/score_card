@@ -13,12 +13,31 @@ struct ScoreCardApp: App {
     /// One shared LocationManager for the whole app, injected via the environment.
     @State private var locationManager = LocationManager()
 
+    /// Records every store mutation to the action log. Held for the app's
+    /// lifetime — it works by observing save notifications, so it has to
+    /// outlive any one screen.
+    @State private var actionLogRecorder = ActionLogRecorder()
+
     let sharedModelContainer: ModelContainer = ScoreCardApp.makeModelContainer()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(locationManager)
+                .task {
+                    // UI tests run against a throwaway store, and logging their
+                    // churn into the real log file would be both noise and a
+                    // trespass. They stay silent unless a test explicitly opts
+                    // in with "-actionLogTesting", which redirects the log to a
+                    // throwaway directory — that is how the recorder actually
+                    // starting in the shipping app gets covered end to end.
+                    let arguments = ProcessInfo.processInfo.arguments
+                    if arguments.contains("-uitesting") {
+                        guard arguments.contains("-actionLogTesting") else { return }
+                        ActionLog.useThrowawayDirectory()
+                    }
+                    actionLogRecorder.start()
+                }
         }
         .modelContainer(sharedModelContainer)
     }

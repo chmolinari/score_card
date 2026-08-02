@@ -23,6 +23,8 @@ Things both apps must agree on. When changing any of these on one platform, trea
 - **In-app help** — the text of the Settings → "How to Use ScoreCard" page is specified in `docs/help-content.md`, and both apps must show the same nine topics (`gettingStarted`, `startingGame`, `keepingScore`, `handsAndDealer`, `finishingGame`, `correctingResult`, `registeringPastGame`, `playersAndTeams`, `dataAndBackups`) in that order, with the same words. Only blocks the spec marks **iOS only** or **Android only** may differ — everything else matches verbatim. The identifier list and its order are pinned by a unit test on each side (`HelpTopic.all` on iOS, `helpTopics` on Android), so adding or reordering a topic fails a test until both ports agree. The help describes behavior specified in the other `docs/` files, so changing one of those rules means changing the matching topic too.
 - **Sync** — there is no cross-platform live sync. iOS uses CloudKit (Apple-only); migration between platforms goes through backup files.
 
+Related but deliberately **not** a contract: the **action log** (`docs/action-log.md`) is an on-device audit trail both apps write in the same JSON Lines format so two logs read alike, but nothing ever parses the other platform's log and it is never part of a backup. Keep the formats in step because it is convenient, not because anything breaks if they drift.
+
 ## Conventions
 
 - Commit messages: past tense ("added", "fixed", "changed"). Do not add co-author trailers.

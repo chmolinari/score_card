@@ -16,7 +16,6 @@ import com.christianmolinari.scorecard.ui.settings.HelpScreen
 import com.christianmolinari.scorecard.ui.settings.HelpTopicScreen
 import com.christianmolinari.scorecard.ui.settings.SettingsScreen
 import com.christianmolinari.scorecard.ui.theme.ScoreCardTheme
-import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -56,10 +55,12 @@ class HelpUiTest {
         container = AppContainer(context, database)
     }
 
-    @After
-    fun tearDown() {
-        database.close()
-    }
+    // Deliberately no database.close(). A JUnit @Rule wraps @After, so the
+    // compose rule disposes the composition *after* this method runs — closing
+    // the database here races the screen's still-live Flow collectors and fails
+    // intermittently with "The database ':memory:' is not open" in whichever
+    // test happens to lose. The database is in-memory and a fresh one is built
+    // per test, so letting it fall out of scope costs nothing.
 
     @Test
     fun settingsOpensTheHelpIndexAndATopicOpensItsOwnPage() {
@@ -90,6 +91,7 @@ class HelpUiTest {
                         container = container,
                         onOpenBackups = {},
                         onOpenHelp = { screen = Screen.HELP },
+                        onOpenActionLog = {},
                     )
 
                     Screen.HELP -> HelpScreen(

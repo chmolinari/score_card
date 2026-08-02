@@ -468,6 +468,28 @@ val helpTopics: List<HelpTopic> = listOf(
                     "All Data\". \"Delete All Data\" wipes every player, team and game to start fresh. " +
                     "Neither can be undone, so make a backup before you do either.",
             ),
+            HelpBlock.Paragraph(
+                "Under \"Logging\", ScoreCard keeps a record of everything that changes your data " +
+                    "— players and teams added or removed, every game, and every score as you enter " +
+                    "it — each with the time it happened. It is there so that if something ever " +
+                    "looks wrong, you can look back and see exactly what happened and when. The " +
+                    "record stays on this device, is never included in a backup, and never leaves " +
+                    "unless you share it.",
+            ),
+            HelpBlock.Bullets(
+                listOf(
+                    "\"Record actions\" is on to begin with. Turn it off and nothing more is written; " +
+                        "what has already been recorded is kept.",
+                    "\"Maximum size\" is how much space the record may use, 100 MiB by default. Once " +
+                        "it is full the oldest entries make way for new ones, so it never grows beyond " +
+                        "what you chose.",
+                    "\"View Log\" shows the most recent actions, newest first. \"Share Log\" sends the " +
+                        "whole record somewhere else, which is what to do if you are reporting a " +
+                        "problem.",
+                    "\"Delete Log\" is available once recording is switched off, so the record can " +
+                        "never be deleted while it is still being written to.",
+                ),
+            ),
         ),
     ),
 )

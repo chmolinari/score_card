@@ -25,7 +25,6 @@ import com.christianmolinari.scorecard.ui.games.GameDetailScreen
 import com.christianmolinari.scorecard.ui.games.GameEditScreen
 import com.christianmolinari.scorecard.ui.theme.ScoreCardTheme
 import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Before
@@ -75,10 +74,12 @@ class GameEditingUiTest {
         gameId = seedClosedGame()
     }
 
-    @After
-    fun tearDown() {
-        database.close()
-    }
+    // Deliberately no database.close(). A JUnit @Rule wraps @After, so the
+    // compose rule disposes the composition *after* this method runs — closing
+    // the database here races the screen's still-live Flow collectors and fails
+    // intermittently with "The database ':memory:' is not open" in whichever
+    // test happens to lose. The database is in-memory and a fresh one is built
+    // per test, so letting it fall out of scope costs nothing.
 
     // There must be no route from the editor's first step to the scores while
     // the reason is empty — including one that looks filled but is only spaces.

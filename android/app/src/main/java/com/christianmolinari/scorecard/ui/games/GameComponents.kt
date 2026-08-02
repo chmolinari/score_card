@@ -215,7 +215,7 @@ fun ParticipantScoringSheet(
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val gameDao = container.database.gameDao()
+    val gameDao = container.gameDao
 
 
     var customAmount by remember { mutableIntStateOf(1) }

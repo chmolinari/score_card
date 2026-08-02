@@ -112,7 +112,15 @@ struct PlayersView: View {
     }
 
     private func commitDeletion() {
-        for player in pendingDeletion { modelContext.delete(player) }
+        for player in pendingDeletion {
+            // Noted before the delete, and separately from the store-level line
+            // the recorder writes: together they say the deletion was made here
+            // and confirmed, rather than having arrived over iCloud.
+            ActionLogRecorder.note("userConfirmedPlayerDelete",
+                                   name: player.name,
+                                   detail: ["teams": player.sortedTeams.map(\.name).joined(separator: ", ")])
+            modelContext.delete(player)
+        }
         pendingDeletion = []
     }
 

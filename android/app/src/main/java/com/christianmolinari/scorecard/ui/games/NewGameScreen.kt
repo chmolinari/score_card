@@ -76,14 +76,14 @@ private enum class LocationStatus { NotDetermined, Granted, Denied }
 fun NewGameScreen(container: AppContainer, onStarted: (Long) -> Unit, onCancel: () -> Unit) {
     val scope = rememberCoroutineScope()
 
-    val rawPlayers by container.database.playerDao().observeAll()
+    val rawPlayers by container.playerDao.observeAll()
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val rawTeams by container.database.teamDao().observeAllWithMembers()
+    val rawTeams by container.teamDao.observeAllWithMembers()
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val gameNames by container.database.gameNameDao().observeAll()
+    val gameNames by container.gameNameDao.observeAll()
         .collectAsStateWithLifecycle(initialValue = emptyList())
     // All games, only to rank the most-used players/teams below.
-    val games by container.database.gameDao().observeAllWithDetails()
+    val games by container.gameDao.observeAllWithDetails()
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val dealingDirection by container.prefs.dealingDirection
         .collectAsStateWithLifecycle(initialValue = DealingDirection.CounterClockwise)
@@ -165,8 +165,8 @@ fun NewGameScreen(container: AppContainer, onStarted: (Long) -> Unit, onCancel: 
             // Best-effort location capture before persisting.
             val location = container.locationCapture.capture()
             val now = Instant.now()
-            val gameNameDao = container.database.gameNameDao()
-            val gameDao = container.database.gameDao()
+            val gameNameDao = container.gameNameDao
+            val gameDao = container.gameDao
 
             // Remember this as the most recently used name so it pre-selects next time.
             draft.gameNameId?.let { nameId ->
@@ -276,7 +276,7 @@ fun NewGameScreen(container: AppContainer, onStarted: (Long) -> Unit, onCancel: 
                     onSelect = { selectedGameNameId = it },
                     onDelete = { gameName ->
                         if (selectedGameNameId == gameName.id) selectedGameNameId = null
-                        scope.launch { container.database.gameNameDao().delete(gameName) }
+                        scope.launch { container.gameNameDao.delete(gameName) }
                     },
                     onAddNew = { isAddingGameName = true },
                 )

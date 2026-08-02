@@ -59,6 +59,13 @@ interface GameDao {
     @Query("DELETE FROM seats WHERE gameId = :gameId") suspend fun deleteSeatsForGame(gameId: Long)
     @Insert suspend fun insertGameEdit(edit: GameEditEntity): Long
 
+    // A score entry points at a participant, not at a game, so this resolves
+    // the game a scoring change belongs to. Used by the action log, which
+    // records a gameId on every scoring line so an evening can be read back as
+    // one game rather than a stream of unattributed points.
+    @Query("SELECT gameId FROM participants WHERE id = :participantId")
+    suspend fun gameIdForParticipant(participantId: Long): Long?
+
     // Correcting a closed game: the delta entries and the edit record have to
     // land together, or a reader could catch a game whose scores moved with no
     // reason logged (or the reverse).

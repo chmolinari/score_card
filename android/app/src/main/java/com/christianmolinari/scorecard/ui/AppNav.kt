@@ -29,6 +29,7 @@ import com.christianmolinari.scorecard.ui.games.NewGameScreen
 import com.christianmolinari.scorecard.ui.games.RegisterGameScreen
 import com.christianmolinari.scorecard.ui.games.ScoreboardScreen
 import com.christianmolinari.scorecard.ui.players.PlayersScreen
+import com.christianmolinari.scorecard.ui.settings.ActionLogScreen
 import com.christianmolinari.scorecard.ui.settings.BackupListScreen
 import com.christianmolinari.scorecard.ui.settings.HelpScreen
 import com.christianmolinari.scorecard.ui.settings.HelpTopicScreen
@@ -110,6 +111,7 @@ fun ScoreCardApp(container: AppContainer) {
                     container = container,
                     onOpenBackups = { navController.navigate("backups") },
                     onOpenHelp = { navController.navigate("help") },
+                    onOpenActionLog = { navController.navigate("actionLog") },
                 )
             }
             composable("newGame") {
@@ -168,6 +170,12 @@ fun ScoreCardApp(container: AppContainer) {
             }
             composable("backups") {
                 BackupListScreen(
+                    container = container,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable("actionLog") {
+                ActionLogScreen(
                     container = container,
                     onBack = { navController.popBackStack() },
                 )

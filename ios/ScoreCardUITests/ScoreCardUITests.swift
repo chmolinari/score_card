@@ -280,6 +280,11 @@ final class ScoreCardUITests: XCTestCase {
     private func tapWhenScrolledIntoView(_ element: XCUIElement,
                                          in app: XCUIApplication,
                                          maxSwipes: Int = 8) {
+        // Return to the top first, so the search does not depend on where the
+        // previous step left the list. Settings grew a section between Backup
+        // and the danger zone, and a downward-only search could no longer reach
+        // a control that had already scrolled above the viewport.
+        for _ in 0..<maxSwipes where !element.isHittable { app.swipeDown() }
         var swipes = 0
         while !element.isHittable && swipes < maxSwipes {
             app.swipeUp()

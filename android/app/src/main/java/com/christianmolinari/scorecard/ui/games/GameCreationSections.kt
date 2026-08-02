@@ -245,7 +245,7 @@ suspend fun prepareGameNameSelection(container: AppContainer): Long? {
         seedGameNamesFromExistingGames(container.database)
         container.prefs.setHasSeededGameNames(true)
     }
-    val all = container.database.gameNameDao().getAll()
+    val all = container.gameNameDao.getAll()
     return GameNamePicker
         .defaultSelection(all, lastUsed = { it.lastUsedAt }, name = { it.name })
         ?.id

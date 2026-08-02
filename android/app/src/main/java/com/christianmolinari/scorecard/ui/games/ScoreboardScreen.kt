@@ -128,7 +128,7 @@ private val HandBaselineSaver = listSaver<Map<Long, Int>?, Long>(
 @Composable
 fun ScoreboardScreen(container: AppContainer, gameId: Long, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val gameDao = container.database.gameDao()
+    val gameDao = container.gameDao
 
     val gameFlow = remember(gameId) { gameDao.observeGame(gameId) }
     val game by gameFlow.collectAsStateWithLifecycle(initialValue = null)

@@ -110,7 +110,12 @@ struct TeamsView: View {
     }
 
     private func commitDeletion() {
-        for team in pendingDeletion { modelContext.delete(team) }
+        for team in pendingDeletion {
+            ActionLogRecorder.note("userConfirmedTeamDelete",
+                                   name: team.name,
+                                   detail: ["members": team.sortedMembers.map(\.name).joined(separator: ", ")])
+            modelContext.delete(team)
+        }
         pendingDeletion = []
     }
 

@@ -70,7 +70,7 @@ fun GameEditScreen(
     gameId: Long,
     onDone: () -> Unit,
 ) {
-    val game by container.database.gameDao().observeGame(gameId)
+    val game by container.gameDao.observeGame(gameId)
         .collectAsStateWithLifecycle(initialValue = null)
 
     val loaded = game
@@ -178,7 +178,7 @@ private fun GameEditContent(
             // planner, so this is the same refusal the Save button already
             // makes rather than a second, drifting copy of it.
             if (plan != null) {
-                container.database.gameDao().applyScoreEdit(plan.entries, plan.edit)
+                container.gameDao.applyScoreEdit(plan.entries, plan.edit)
             }
             onDone()
         }

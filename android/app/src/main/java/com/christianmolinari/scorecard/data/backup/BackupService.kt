@@ -5,29 +5,46 @@
 package com.christianmolinari.scorecard.data.backup
 
 import androidx.room.withTransaction
+import com.christianmolinari.scorecard.data.db.GameDao
 import com.christianmolinari.scorecard.data.db.GameEntity
+import com.christianmolinari.scorecard.data.db.GameNameDao
 import com.christianmolinari.scorecard.data.db.GameNameEntity
 import com.christianmolinari.scorecard.data.db.ParticipantEntity
+import com.christianmolinari.scorecard.data.db.PlayerDao
 import com.christianmolinari.scorecard.data.db.PlayerEntity
 import com.christianmolinari.scorecard.data.db.ScoreCardDatabase
 import com.christianmolinari.scorecard.data.db.ScoreEntryEntity
 import com.christianmolinari.scorecard.data.db.SeatEntity
+import com.christianmolinari.scorecard.data.db.TeamDao
 import com.christianmolinari.scorecard.data.db.TeamEntity
 import com.christianmolinari.scorecard.data.db.TeamMemberCrossRef
+import com.christianmolinari.scorecard.data.db.WipeDao
 import com.christianmolinari.scorecard.domain.displayName
 import java.time.Instant
 
-class BackupService(private val database: ScoreCardDatabase) {
+class BackupService(
+    private val database: ScoreCardDatabase,
+    // A restore rebuilds the whole store. Going through the DAOs the action log
+    // wraps means the rebuilt rows are explained in the log instead of
+    // appearing from nowhere; the iOS port gets the same for free, because its
+    // restore runs through the observed ModelContext. Defaults are the raw
+    // DAOs so a test can still construct this with a database alone.
+    private val playerDao: PlayerDao = database.playerDao(),
+    private val teamDao: TeamDao = database.teamDao(),
+    private val gameDao: GameDao = database.gameDao(),
+    private val gameNameDao: GameNameDao = database.gameNameDao(),
+    private val wipeDao: WipeDao = database.wipeDao(),
+) {
 
     // Serialize the whole store to a snapshot. Players/teams/games are listed
     // in createdAt order and game names in name order — the same orders the
     // iOS exporter uses — so relationship indices mean the same thing on both
     // platforms (and a re-export is stable).
     suspend fun makeSnapshot(): BackupSnapshot {
-        val players = database.playerDao().getAll()
-        val teams = database.teamDao().getAllWithMembers()
-        val games = database.gameDao().getAllWithDetails()
-        val gameNames = database.gameNameDao().getAll()
+        val players = playerDao.getAll()
+        val teams = teamDao.getAllWithMembers()
+        val games = gameDao.getAllWithDetails()
+        val gameNames = gameNameDao.getAll()
 
         val playerIndex = players.withIndex().associate { (i, player) -> player.id to i }
         val teamIndex = teams.withIndex().associate { (i, team) -> team.team.id to i }
@@ -96,21 +113,21 @@ class BackupService(private val database: ScoreCardDatabase) {
     suspend fun restore(text: String): BackupSnapshot {
         val snapshot = BackupCodec.decode(text)
         database.withTransaction {
-            database.wipeDao().wipeAll()
+            wipeDao.wipeAll()
 
             for (dto in snapshot.gameNames.orEmpty()) {
-                database.gameNameDao().insert(
+                gameNameDao.insert(
                     GameNameEntity(name = dto.name, createdAt = dto.createdAt, lastUsedAt = dto.lastUsedAt)
                 )
             }
 
             val playerIds = snapshot.players.map { dto ->
-                database.playerDao().insert(PlayerEntity(name = dto.name, createdAt = dto.createdAt))
+                playerDao.insert(PlayerEntity(name = dto.name, createdAt = dto.createdAt))
             }
 
             val teamIds = snapshot.teams.map { dto ->
-                val teamId = database.teamDao().insert(TeamEntity(name = dto.name, createdAt = dto.createdAt))
-                database.teamDao().insertMembers(
+                val teamId = teamDao.insert(TeamEntity(name = dto.name, createdAt = dto.createdAt))
+                teamDao.insertMembers(
                     // Out-of-range indices are silently dropped, like iOS.
                     dto.memberIndices.mapNotNull { playerIds.getOrNull(it) }
                         .map { TeamMemberCrossRef(teamId = teamId, playerId = it) }
@@ -119,7 +136,7 @@ class BackupService(private val database: ScoreCardDatabase) {
             }
 
             for (dto in snapshot.games) {
-                val gameId = database.gameDao().insertGame(
+                val gameId = gameDao.insertGame(
                     GameEntity(
                         title = dto.title,
                         hasTarget = dto.hasTarget,
@@ -141,7 +158,7 @@ class BackupService(private val database: ScoreCardDatabase) {
                     // the nameSnapshot carries the history (like iOS).
                     val playerId = pdto.playerIndex?.let { playerIds.getOrNull(it) }
                     val teamId = if (playerId == null) pdto.teamIndex?.let { teamIds.getOrNull(it) } else null
-                    val participantId = database.gameDao().insertParticipant(
+                    val participantId = gameDao.insertParticipant(
                         ParticipantEntity(
                             gameId = gameId,
                             playerId = playerId,
@@ -151,7 +168,7 @@ class BackupService(private val database: ScoreCardDatabase) {
                         )
                     )
                     for (edto in pdto.entries) {
-                        database.gameDao().insertScoreEntry(
+                        gameDao.insertScoreEntry(
                             ScoreEntryEntity(
                                 participantId = participantId,
                                 points = edto.points,
@@ -162,7 +179,7 @@ class BackupService(private val database: ScoreCardDatabase) {
                 }
 
                 for (sdto in dto.seats.orEmpty()) {
-                    database.gameDao().insertSeat(
+                    gameDao.insertSeat(
                         SeatEntity(
                             gameId = gameId,
                             playerId = sdto.playerIndex?.let { playerIds.getOrNull(it) },
@@ -172,7 +189,7 @@ class BackupService(private val database: ScoreCardDatabase) {
                 }
 
                 for (edit in BackupMapping.editEntities(gameId, dto.edits)) {
-                    database.gameDao().insertGameEdit(edit)
+                    gameDao.insertGameEdit(edit)
                 }
             }
         }
@@ -184,6 +201,6 @@ class BackupService(private val database: ScoreCardDatabase) {
     // automatically, so the UI updates immediately (the concern the iOS
     // per-object delete workaround addresses doesn't exist here).
     suspend fun eraseAll() {
-        database.wipeDao().wipeAll()
+        wipeDao.wipeAll()
     }
 }

@@ -67,11 +67,11 @@ import kotlinx.coroutines.launch
 @Composable
 fun PlayersScreen(container: AppContainer) {
     val scope = rememberCoroutineScope()
-    val players by container.database.playerDao().observeAll()
+    val players by container.playerDao.observeAll()
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val teams by container.database.teamDao().observeAllWithMembers()
+    val teams by container.teamDao.observeAllWithMembers()
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val games by container.database.gameDao().observeAllWithDetails()
+    val games by container.gameDao.observeAllWithDetails()
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val sortOrder by container.prefs.playersSortOrder
         .collectAsStateWithLifecycle(initialValue = CompetitorSortOrder.NameAscending)
@@ -192,7 +192,7 @@ fun PlayersScreen(container: AppContainer) {
                 TextButton(
                     onClick = {
                         pendingDeletion = null
-                        scope.launch { container.database.playerDao().delete(player) }
+                        scope.launch { container.playerDao.delete(player) }
                     },
                 ) {
                     Text("Delete Player", color = MaterialTheme.colorScheme.error)

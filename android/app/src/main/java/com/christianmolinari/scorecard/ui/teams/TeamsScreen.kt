@@ -67,9 +67,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun TeamsScreen(container: AppContainer) {
     val scope = rememberCoroutineScope()
-    val teams by container.database.teamDao().observeAllWithMembers()
+    val teams by container.teamDao.observeAllWithMembers()
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val games by container.database.gameDao().observeAllWithDetails()
+    val games by container.gameDao.observeAllWithDetails()
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val sortOrder by container.prefs.teamsSortOrder
         .collectAsStateWithLifecycle(initialValue = CompetitorSortOrder.NameAscending)
@@ -179,7 +179,7 @@ fun TeamsScreen(container: AppContainer) {
                 TextButton(
                     onClick = {
                         pendingDeletion = null
-                        scope.launch { container.database.teamDao().delete(team.team) }
+                        scope.launch { container.teamDao.delete(team.team) }
                     },
                 ) {
                     Text("Delete Team", color = MaterialTheme.colorScheme.error)

@@ -30,6 +30,18 @@ struct SettingsView: View {
     @State private var showResetConfirmation = false
     @State private var statusMessage: StatusMessage?
 
+    // Action log. Defaults here are the shipped defaults: recording on, 100 MiB.
+    @AppStorage(ActionLogSize.enabledKey) private var actionLogEnabled = true
+    @AppStorage(ActionLogSize.maxMiBKey) private var actionLogMaxMiB = ActionLogSize.defaultMiB
+    @State private var showLogDeleteConfirmation = false
+    /// Re-read after a delete so the row's size stops showing bytes that are gone.
+    @State private var logSizeRevision = 0
+
+    private var logSize: String {
+        _ = logSizeRevision
+        return ActionLog.shared.formattedSize
+    }
+
     private var isEmptyStore: Bool { players.isEmpty && teams.isEmpty && games.isEmpty }
 
     var body: some View {
@@ -95,6 +107,7 @@ struct SettingsView: View {
                 }
 
                 backupSection
+                loggingSection
                 resetSection
 
                 Section("About") {
@@ -118,6 +131,27 @@ struct SettingsView: View {
             }
             .alert(item: $statusMessage) { message in
                 Alert(title: Text(message.title), message: Text(message.body), dismissButton: .default(Text("OK")))
+            }
+            .confirmationDialog("Delete the action log?",
+                                isPresented: $showLogDeleteConfirmation,
+                                titleVisibility: .visible) {
+                Button("Delete Log", role: .destructive) {
+                    ActionLog.shared.deleteAll()
+                    logSizeRevision += 1
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This removes the record of past actions from this device. Your players, teams and games are not affected.")
+            }
+            // A newly lowered maximum applies now, not at the next write.
+            .onChange(of: actionLogMaxMiB) { _, newValue in
+                ActionLog.shared.enforceLimit(maxMiB: newValue)
+                logSizeRevision += 1
+            }
+            .onChange(of: actionLogEnabled) { _, newValue in
+                // Forced: turning recording off must leave a note saying so,
+                // rather than the log just stopping with no explanation.
+                ActionLogRecorder.note(newValue ? "loggingEnabled" : "loggingDisabled", force: true)
             }
         }
     }
@@ -149,6 +183,49 @@ struct SettingsView: View {
             Text("Backup & Restore")
         } footer: {
             Text(backupFooter)
+        }
+    }
+
+    /// The action log: an on-device record of everything that changes stored
+    /// data, kept so an odd result can be traced afterwards. See
+    /// `docs/action-log.md`.
+    @ViewBuilder
+    private var loggingSection: some View {
+        Section {
+            Toggle("Record actions", isOn: $actionLogEnabled)
+
+            Picker("Maximum size", selection: $actionLogMaxMiB) {
+                ForEach(ActionLogSize.choices, id: \.self) { size in
+                    Text("\(size) MiB").tag(size)
+                }
+            }
+            .disabled(!actionLogEnabled)
+
+            NavigationLink {
+                ActionLogView()
+            } label: {
+                LabeledContent("View Log", value: logSize)
+            }
+
+            ShareLink(items: ActionLog.shared.shareableURLs) {
+                Label("Share Log", systemImage: "square.and.arrow.up")
+            }
+            .disabled(ActionLog.shared.shareableURLs.isEmpty)
+
+            // Deleting is offered only while recording is off, so a delete can
+            // never race a live write.
+            Button(role: .destructive) {
+                showLogDeleteConfirmation = true
+            } label: {
+                Label("Delete Log", systemImage: "trash")
+            }
+            .disabled(actionLogEnabled || ActionLog.shared.shareableURLs.isEmpty)
+        } header: {
+            Text("Logging")
+        } footer: {
+            Text(actionLogEnabled
+                 ? "Records every change to your players, teams and games — including each score — with the time it happened, so an unexpected result can be traced later. Kept on this device only, never synced, and never included in a backup. The oldest entries are dropped once the log reaches its maximum size. Turn recording off to delete it."
+                 : "Recording is off, so nothing new is being written. The existing log is kept until you delete it.")
         }
     }
 
@@ -203,6 +280,13 @@ struct SettingsView: View {
         isWorking = true
         defer { isWorking = false }
         do {
+            // Noted before the wipe: eraseAll deletes every object individually,
+            // so without this the log would show a flood of deletions with
+            // nothing saying they were one deliberate reset.
+            ActionLogRecorder.note("userConfirmedResetAllData",
+                                   detail: ["players": "\(players.count)",
+                                            "teams": "\(teams.count)",
+                                            "games": "\(games.count)"])
             try BackupService.eraseAll(in: modelContext)
             lastBackup = nil
             lastBackupDate = nil

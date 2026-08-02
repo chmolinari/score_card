@@ -84,7 +84,7 @@ fun GamesScreen(
     onNewGame: () -> Unit,
     onRegisterGame: () -> Unit,
 ) {
-    val games by container.database.gameDao().observeAllWithDetails()
+    val games by container.gameDao.observeAllWithDetails()
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
     // The "+" button offers both ways to add a game (like the iOS Menu).
@@ -163,7 +163,7 @@ fun GamesScreen(
                         items(openGames, key = { it.game.id }) { game ->
                             SwipeToDeleteBox(
                                 onDelete = {
-                                    scope.launch { container.database.gameDao().deleteGame(game.game) }
+                                    scope.launch { container.gameDao.deleteGame(game.game) }
                                 },
                             ) {
                                 GameRow(game = game, onClick = { onOpenGame(game.game.id) })
@@ -177,7 +177,7 @@ fun GamesScreen(
                         items(closedGames, key = { it.game.id }) { game ->
                             SwipeToDeleteBox(
                                 onDelete = {
-                                    scope.launch { container.database.gameDao().deleteGame(game.game) }
+                                    scope.launch { container.gameDao.deleteGame(game.game) }
                                 },
                             ) {
                                 GameRow(game = game, onClick = { onOpenDetail(game.game.id) })

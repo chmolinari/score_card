@@ -4,4 +4,7 @@
     <external-files-path name="backups" path="Backups/" />
     <!-- Fallback location when external storage is unavailable. -->
     <files-path name="local_backups" path="Backups/" />
+    <!-- The action log (filesDir/logs), so "Share Log" can hand the segments
+         to another app. Without this entry FileProvider refuses the URI. -->
+    <files-path name="action_logs" path="logs/" />
 </paths>

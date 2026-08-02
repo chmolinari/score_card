@@ -6,9 +6,11 @@
 
 package com.christianmolinari.scorecard.ui.settings
 
+import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.QuestionMark
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
@@ -34,6 +37,8 @@ import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -59,9 +64,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.christianmolinari.scorecard.AppContainer
+import com.christianmolinari.scorecard.data.log.ActionLogSize
 import com.christianmolinari.scorecard.domain.DealingDirection
 import com.christianmolinari.scorecard.domain.DrawDealingRule
 import com.christianmolinari.scorecard.ui.components.AppBackground
@@ -81,12 +88,17 @@ internal data class StatusMessage(val title: String, val body: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit, onOpenHelp: () -> Unit) {
-    val players by container.database.playerDao().observeAll()
+fun SettingsScreen(
+    container: AppContainer,
+    onOpenBackups: () -> Unit,
+    onOpenHelp: () -> Unit,
+    onOpenActionLog: () -> Unit,
+) {
+    val players by container.playerDao.observeAll()
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val teams by container.database.teamDao().observeAllWithMembers()
+    val teams by container.teamDao.observeAllWithMembers()
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val games by container.database.gameDao().observeAllWithDetails()
+    val games by container.gameDao.observeAllWithDetails()
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val dealingDirection by container.prefs.dealingDirection
         .collectAsStateWithLifecycle(initialValue = DealingDirection.CounterClockwise)
@@ -104,6 +116,19 @@ fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit, onOpenHel
     var lastBackupDate by remember { mutableStateOf<Instant?>(null) }
     var showResetConfirmation by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<StatusMessage?>(null) }
+
+    // Action log.
+    val actionLogEnabled by container.prefs.actionLogEnabled
+        .collectAsStateWithLifecycle(initialValue = true)
+    val actionLogMaxMiB by container.prefs.actionLogMaxMiB
+        .collectAsStateWithLifecycle(initialValue = ActionLogSize.DEFAULT_MIB)
+    var showLogDeleteConfirmation by remember { mutableStateOf(false) }
+    // Bumped after a delete so the displayed size stops showing bytes that are
+    // gone; the file has no Flow to observe.
+    var logSizeRevision by remember { mutableStateOf(0) }
+    val logBytes = remember(logSizeRevision, actionLogEnabled, games, players, teams) {
+        container.actionLog.totalBytes()
+    }
 
     val isEmptyStore = players.isEmpty() && teams.isEmpty() && games.isEmpty()
 
@@ -380,6 +405,87 @@ fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit, onOpenHel
                     }
                 }
 
+                item(key = "logging") {
+                    SettingsSection(
+                        title = "Logging",
+                        footer = if (actionLogEnabled) {
+                            "Records every change to your players, teams and games — including " +
+                                "each score — with the time it happened, so an unexpected result " +
+                                "can be traced later. Kept on this device only and never included " +
+                                "in a backup. The oldest entries are dropped once the log reaches " +
+                                "its maximum size. Turn recording off to delete it."
+                        } else {
+                            "Recording is off, so nothing new is being written. The existing log " +
+                                "is kept until you delete it."
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(enabled = !isWorking) {
+                                    scope.launch {
+                                        container.prefs.setActionLogEnabled(!actionLogEnabled)
+                                    }
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Description,
+                                contentDescription = null,
+                                tint = ThemeColors.accent,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Text(
+                                text = "Record actions",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Switch(checked = actionLogEnabled, onCheckedChange = null)
+                        }
+                        HorizontalDivider()
+                        ChoiceRow(
+                            label = "Maximum size",
+                            options = ActionLogSize.choices,
+                            selected = actionLogMaxMiB,
+                            optionLabel = { "$it MiB" },
+                            enabled = actionLogEnabled && !isWorking,
+                        ) { chosen ->
+                            scope.launch {
+                                container.prefs.setActionLogMaxMiB(chosen)
+                                // Apply a lowered maximum now, not at the next write.
+                                container.actionLog.enforceLimit(chosen)
+                                logSizeRevision++
+                            }
+                        }
+                        HorizontalDivider()
+                        ActionRow(
+                            icon = Icons.Filled.Description,
+                            label = "View Log",
+                            onClick = onOpenActionLog,
+                        )
+                        HorizontalDivider()
+                        ActionRow(
+                            icon = Icons.Filled.Share,
+                            label = "Share Log",
+                            enabled = logBytes > 0,
+                            onClick = { shareActionLog(context, container) },
+                        )
+                        HorizontalDivider()
+                        // Offered only while recording is off, so a delete can
+                        // never race a live write.
+                        ActionRow(
+                            icon = Icons.Filled.Delete,
+                            label = "Delete Log",
+                            enabled = !actionLogEnabled && logBytes > 0,
+                            destructive = true,
+                            onClick = { showLogDeleteConfirmation = true },
+                        )
+                    }
+                }
+
                 item(key = "danger") {
                     SettingsSection(
                         footer = "Erases all players, teams, and games to start fresh. " +
@@ -406,6 +512,33 @@ fun SettingsScreen(container: AppContainer, onOpenBackups: () -> Unit, onOpenHel
         }
 
         WorkingOverlay(visible = isWorking)
+    }
+
+    if (showLogDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showLogDeleteConfirmation = false },
+            title = { Text("Delete the action log?") },
+            text = {
+                Text(
+                    "This removes the record of past actions from this device. " +
+                        "Your players, teams and games are not affected.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogDeleteConfirmation = false
+                        container.actionLog.deleteAll()
+                        logSizeRevision++
+                    },
+                ) {
+                    Text("Delete Log", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogDeleteConfirmation = false }) { Text("Cancel") }
+            },
+        )
     }
 
     if (showResetConfirmation) {
@@ -515,4 +648,66 @@ private fun appVersion(): String {
             "$name (${PackageInfoCompat.getLongVersionCode(info)})"
         }.getOrDefault("1.0")
     }
+}
+
+// A label with the current choice on the right, expanding to a menu — the
+// Android stand-in for an iOS Picker row.
+@Composable
+private fun <T> ChoiceRow(
+    label: String,
+    options: List<T>,
+    selected: T,
+    optionLabel: (T) -> String,
+    enabled: Boolean = true,
+    onSelect: (T) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(enabled = enabled) { expanded = true }
+                .padding(vertical = 10.dp)
+                .alpha(if (enabled) 1f else 0.4f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = optionLabel(selected),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(optionLabel(option)) },
+                    onClick = {
+                        expanded = false
+                        onSelect(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+// Hands both log segments to another app. Uses the same FileProvider authority
+// as backup sharing, so no new manifest entry is needed.
+private fun shareActionLog(context: Context, container: AppContainer) {
+    val files = container.actionLog.shareableFiles()
+    if (files.isEmpty()) return
+    val uris = ArrayList(
+        files.map { file ->
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        }
+    )
+    val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+        type = "application/json"
+        putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share action log"))
 }

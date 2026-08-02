@@ -138,6 +138,12 @@ struct BackupListView: View {
         defer { isWorking = false }
         do {
             let data = try await Task.detached { try BackupStorage.read(url: url) }.value
+            // A restore erases then rebuilds the whole store, so the log needs
+            // one line saying which file did it — otherwise it reads as a mass
+            // deletion followed by a mass creation with no cause.
+            ActionLogRecorder.note("userConfirmedRestore",
+                                   name: url.lastPathComponent,
+                                   detail: ["bytes": "\(data.count)"])
             let snapshot = try BackupService.restore(from: data, into: modelContext)
             statusMessage = StatusMessage(title: "Restore Complete",
                                           body: "Restored \(snapshot.players.count) players, \(snapshot.teams.count) teams, and \(snapshot.games.count) games.")

@@ -71,7 +71,7 @@ fun GameDetailScreen(
     onBack: () -> Unit,
     onEditScores: (Long) -> Unit,
 ) {
-    val game by container.database.gameDao().observeGame(gameId)
+    val game by container.gameDao.observeGame(gameId)
         .collectAsStateWithLifecycle(initialValue = null)
 
     AppBackground {

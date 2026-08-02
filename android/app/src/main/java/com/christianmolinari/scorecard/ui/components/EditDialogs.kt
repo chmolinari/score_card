@@ -56,7 +56,7 @@ fun PlayerEditDialog(
     onDismiss: () -> Unit,
     onCreated: (PlayerEntity) -> Unit = {},
 ) {
-    val playersFlow = remember(container) { container.database.playerDao().observeAll() }
+    val playersFlow = remember(container) { container.playerDao.observeAll() }
     val allPlayers by playersFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
 
@@ -74,7 +74,7 @@ fun PlayerEditDialog(
         },
         onSave = { trimmed ->
             scope.launch {
-                val dao = container.database.playerDao()
+                val dao = container.playerDao
                 if (existing != null) {
                     dao.update(existing.copy(name = trimmed))
                 } else {
@@ -95,7 +95,7 @@ fun GameNameEditDialog(
     onDismiss: () -> Unit,
     onCreated: (GameNameEntity) -> Unit = {},
 ) {
-    val namesFlow = remember(container) { container.database.gameNameDao().observeAll() }
+    val namesFlow = remember(container) { container.gameNameDao.observeAll() }
     val allNames by namesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
 
@@ -112,7 +112,7 @@ fun GameNameEditDialog(
         },
         onSave = { trimmed ->
             scope.launch {
-                val dao = container.database.gameNameDao()
+                val dao = container.gameNameDao
                 if (existing != null) {
                     dao.update(existing.copy(name = trimmed))
                 } else {
@@ -141,8 +141,8 @@ fun TeamEditDialog(
     onDismiss: () -> Unit,
     onCreated: (TeamWithMembers) -> Unit = {},
 ) {
-    val teamsFlow = remember(container) { container.database.teamDao().observeAllWithMembers() }
-    val playersFlow = remember(container) { container.database.playerDao().observeAll() }
+    val teamsFlow = remember(container) { container.teamDao.observeAllWithMembers() }
+    val playersFlow = remember(container) { container.playerDao.observeAll() }
     val allTeams by teamsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val allPlayers by playersFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     val sortedPlayers = remember(allPlayers) {
@@ -255,7 +255,7 @@ fun TeamEditDialog(
                 enabled = canSave,
                 onClick = {
                     scope.launch {
-                        val dao = container.database.teamDao()
+                        val dao = container.teamDao
                         // Keep member ids in display order; the junction table
                         // itself is unordered.
                         val memberIds = sortedPlayers.filter { it.id in selectedIds }.map { it.id }

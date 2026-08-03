@@ -530,6 +530,18 @@ extension HelpTopic {
                 date and size of each. Tap one to load it, or tap "Import from Files…" to pick \
                 a backup file from somewhere else. Swipe a backup in the list to delete the \
                 file.
+                """,
+                """
+                "Keep backups" is how many to hold on to, ten to begin with. Once you have \
+                that many, making a new one removes the oldest, so they never pile up for \
+                ever. Set it to 1 to keep only the latest. It never goes below one, so you are \
+                never left with none.
+                """,
+                """
+                ScoreCard only ever removes backups it made on the device you are using. \
+                Backups made on another device, and any made before this setting existed, are \
+                left alone — you can still delete those yourself by swiping. Lowering the \
+                number asks first and tells you how many will go.
                 """
             ]),
             .paragraph("""

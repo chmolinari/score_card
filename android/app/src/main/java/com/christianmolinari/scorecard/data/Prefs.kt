@@ -12,8 +12,11 @@ import com.christianmolinari.scorecard.domain.CompetitorSortOrder
 import com.christianmolinari.scorecard.domain.DealingDirection
 import com.christianmolinari.scorecard.domain.DrawDealingRule
 import com.christianmolinari.scorecard.data.log.ActionLogSize
+import com.christianmolinari.scorecard.domain.BackupRetention
 import com.christianmolinari.scorecard.domain.NegativeScores
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -32,6 +35,31 @@ class Prefs(private val context: Context) {
         val allowNegativeScores = booleanPreferencesKey(NegativeScores.STORAGE_KEY)
         val actionLogEnabled = booleanPreferencesKey(ActionLogSize.ENABLED_KEY)
         val actionLogMaxMiB = intPreferencesKey(ActionLogSize.MAX_MIB_KEY)
+        val backupRetentionCount = intPreferencesKey(BackupRetention.COUNT_KEY)
+        val backupDeviceTag = stringPreferencesKey(BackupRetention.DEVICE_TAG_KEY)
+    }
+
+    // How many of this device's own backups to keep. Clamped on the way out so
+    // a corrupt value can never mean "keep none".
+    val backupRetentionCount: Flow<Int> = context.dataStore.data
+        .map { prefs -> BackupRetention.clampCount(prefs[Keys.backupRetentionCount]) }
+
+    suspend fun setBackupRetentionCount(value: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.backupRetentionCount] = BackupRetention.clampCount(value)
+        }
+    }
+
+    // A short, opaque, per-device token stamped into every backup filename, so
+    // retention can tell this device's backups from any other's. Minted once
+    // and then stable; a reinstall mints a new one, which only ever means the
+    // older files stop being "mine" and are left alone.
+    suspend fun deviceTag(): String {
+        val existing = context.dataStore.data.map { it[Keys.backupDeviceTag] }.first()
+        if (!existing.isNullOrEmpty()) return existing
+        val fresh = UUID.randomUUID().toString().replace("-", "").take(6).lowercase()
+        context.dataStore.edit { prefs -> prefs[Keys.backupDeviceTag] = fresh }
+        return fresh
     }
 
     // Whether the action log records anything. On by default: an audit trail

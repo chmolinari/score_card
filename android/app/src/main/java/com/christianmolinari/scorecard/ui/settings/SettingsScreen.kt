@@ -24,11 +24,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.QuestionMark
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.RotateLeft
 import androidx.compose.material.icons.filled.RotateRight
@@ -41,6 +43,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -62,13 +65,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.christianmolinari.scorecard.AppContainer
+import com.christianmolinari.scorecard.data.backup.BackupFile
+import com.christianmolinari.scorecard.data.log.ActionLogEntry
 import com.christianmolinari.scorecard.data.log.ActionLogSize
+import com.christianmolinari.scorecard.domain.BackupRetention
 import com.christianmolinari.scorecard.domain.DealingDirection
 import com.christianmolinari.scorecard.domain.DrawDealingRule
 import com.christianmolinari.scorecard.ui.components.AppBackground
@@ -123,6 +131,11 @@ fun SettingsScreen(
     val actionLogMaxMiB by container.prefs.actionLogMaxMiB
         .collectAsStateWithLifecycle(initialValue = ActionLogSize.DEFAULT_MIB)
     var showLogDeleteConfirmation by remember { mutableStateOf(false) }
+
+    // Backup retention. Only this device's own backups are ever pruned.
+    val backupsKept by container.prefs.backupRetentionCount
+        .collectAsStateWithLifecycle(initialValue = BackupRetention.DEFAULT_KEPT)
+    var pendingPrune by remember { mutableStateOf<List<BackupFile>>(emptyList()) }
     // Bumped after a delete so the displayed size stops showing bytes that are
     // gone; the file has no Flow to observe.
     var logSizeRevision by remember { mutableStateOf(0) }
@@ -137,8 +150,21 @@ fun SettingsScreen(
             isWorking = true
             try {
                 val json = container.backupService.exportJson()
-                lastBackup = container.backupStorage.write(json)
+                val deviceTag = container.prefs.deviceTag()
+                lastBackup = container.backupStorage.write(json, deviceTag)
                 lastBackupDate = Instant.now()
+                // Trim this device's older backups now the new one is written.
+                for (name in container.backupStorage.prune(backupsKept, deviceTag)) {
+                    container.actionLog.append(
+                        ActionLogEntry(
+                            timestamp = container.actionLog.now(),
+                            action = "backupPruned",
+                            entity = "Backup",
+                            entityId = "-",
+                            name = name,
+                        ),
+                    )
+                }
                 statusMessage = StatusMessage(
                     title = "Backup Complete",
                     body = "Saved ${players.size} players, ${teams.size} teams, and ${games.size} games to this device.",
@@ -380,6 +406,28 @@ fun SettingsScreen(
                                 "Share it to move your data to another device or another platform."
                         },
                     ) {
+                        // A single pick from a rolling list, not a pair of
+                        // nudge buttons: winding from ten down to two with +/-
+                        // asked the question at every step on the way.
+                        ChoiceRow(
+                            label = "Keep backups",
+                            options = (BackupRetention.MINIMUM_KEPT..BackupRetention.MAXIMUM_KEPT).toList(),
+                            selected = backupsKept,
+                            optionLabel = { if (it == 1) "1 (only the latest)" else "$it" },
+                            enabled = !isWorking,
+                        ) { chosen ->
+                            scope.launch {
+                                val wasKept = backupsKept
+                                container.prefs.setBackupRetentionCount(chosen)
+                                // Only a reduction can leave anything to remove,
+                                // and it asks once, for the whole change.
+                                if (chosen < wasKept) {
+                                    pendingPrune = container.backupStorage
+                                        .prunableBackups(chosen, container.prefs.deviceTag())
+                                }
+                            }
+                        }
+                        HorizontalDivider()
                         ActionRow(
                             icon = Icons.Filled.Backup,
                             label = "Back Up Now",
@@ -512,6 +560,56 @@ fun SettingsScreen(
         }
 
         WorkingOverlay(visible = isWorking)
+    }
+
+    if (pendingPrune.isNotEmpty()) {
+        val doomed = pendingPrune
+        AlertDialog(
+            onDismissRequest = { pendingPrune = emptyList() },
+            title = {
+                Text(
+                    if (doomed.size == 1) "Delete 1 older backup?"
+                    else "Delete ${doomed.size} older backups?",
+                )
+            },
+            text = {
+                val oldest = doomed.lastOrNull()?.let { GameFormatting.dateTime(it.date) }
+                Text(
+                    "Keeping only the $backupsKept most recent removes " +
+                        (if (doomed.size == 1) "1 backup file" else "${doomed.size} backup files") +
+                        (if (oldest != null) ", the oldest from $oldest" else "") +
+                        ". Only backups made on this device are removed — any made on your " +
+                        "other devices, and any made before this setting existed, are left alone.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingPrune = emptyList()
+                        scope.launch {
+                            for (backup in doomed) {
+                                if (runCatching { container.backupStorage.delete(backup.file) }.isSuccess) {
+                                    container.actionLog.append(
+                                        ActionLogEntry(
+                                            timestamp = container.actionLog.now(),
+                                            action = "backupPruned",
+                                            entity = "Backup",
+                                            entityId = "-",
+                                            name = backup.name,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    },
+                ) {
+                    Text("Delete ${doomed.size}", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingPrune = emptyList() }) { Text("Cancel") }
+            },
+        )
     }
 
     if (showLogDeleteConfirmation) {

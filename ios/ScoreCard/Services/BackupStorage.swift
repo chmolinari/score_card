@@ -38,12 +38,19 @@ enum BackupStorage {
     static let fileExtension = "json"
     static let filePrefix = "ScoreCard-Backup-"
 
-    /// A timestamped backup file name, e.g. "ScoreCard-Backup-2026-06-01-1830.json".
-    static func makeFilename(date: Date = .now) -> String {
+    /// A timestamped backup file name ending in the device's tag, e.g.
+    /// "ScoreCard-Backup-2026-06-01-183000-a3f19c.json".
+    ///
+    /// The tag is what lets retention prune only the backups *this* device
+    /// wrote — the iCloud folder is shared with the user's other devices. The
+    /// prefix and extension are unchanged, so files still interchange with the
+    /// Android app, which reads a backup's contents and never its name.
+    static func makeFilename(date: Date = .now,
+                             deviceTag: String = BackupRetention.deviceTag()) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
-        return "\(filePrefix)\(formatter.string(from: date)).\(fileExtension)"
+        return "\(filePrefix)\(formatter.string(from: date))-\(deviceTag).\(fileExtension)"
     }
 
     /// The iCloud Drive "Documents" folder for this app, or nil if iCloud is
@@ -112,6 +119,35 @@ enum BackupStorage {
     /// Delete a backup file.
     static func delete(_ url: URL) throws {
         try FileManager.default.removeItem(at: url)
+    }
+
+    /// Backups this device wrote that fall outside the retention limit, newest
+    /// kept. Never includes another device's files, nor the untagged ones
+    /// written before retention existed.
+    static func prunableBackups(keeping: Int,
+                                deviceTag: String = BackupRetention.deviceTag()) -> [BackupFile] {
+        BackupRetention.surplus(in: listBackups(),
+                                ownedBy: deviceTag,
+                                keeping: keeping,
+                                filename: \.name)
+    }
+
+    /// Delete those backups, returning the names actually removed.
+    ///
+    /// Failures are swallowed per file: one undeletable backup must not abort
+    /// the rest, nor fail the backup that has just been written successfully.
+    @discardableResult
+    static func prune(keeping: Int, deviceTag: String = BackupRetention.deviceTag()) -> [String] {
+        var removed: [String] = []
+        for backup in prunableBackups(keeping: keeping, deviceTag: deviceTag) {
+            do {
+                try delete(backup.url)
+                removed.append(backup.name)
+            } catch {
+                continue
+            }
+        }
+        return removed
     }
 
     /// Read a backup file, coordinating with the system so an iCloud file that

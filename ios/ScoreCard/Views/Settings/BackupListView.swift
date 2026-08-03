@@ -156,6 +156,10 @@ struct BackupListView: View {
 private struct BackupRow: View {
     let file: BackupFile
 
+    private var isFromThisDevice: Bool {
+        BackupRetention.isOwned(filename: file.name, byDeviceTagged: BackupRetention.deviceTag())
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: file.isICloud ? "icloud.fill" : "iphone")
@@ -167,6 +171,14 @@ private struct BackupRow: View {
                 Text("\(file.isICloud ? "iCloud Drive" : "On this device") · \(file.formattedSize)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                // The iCloud folder is shared between devices, and only the
+                // ones made here are ever pruned automatically — so say which
+                // those are rather than leaving the rule invisible.
+                if isFromThisDevice {
+                    Text("Made on this device")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
             Spacer()
             Image(systemName: "arrow.down.circle")

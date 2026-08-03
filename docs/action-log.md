@@ -47,6 +47,9 @@ Everything that changes stored state, and the app events that explain a change:
   (an undo), plus `gameEditRecorded` carrying the reason when a finished game is
   corrected. All of these carry `gameId`, so one evening reads back as one game.
 - backups written, restores, and a full reset (`storeWiped`)
+- backups removed by the retention limit (`backupPruned`, one line per file,
+  carrying the filename) — a file disappearing on its own is exactly the kind of
+  thing that should never be untraceable
 - logging switched on or off
 
 Navigation, scrolling and opening a sheet are **not** recorded: they change

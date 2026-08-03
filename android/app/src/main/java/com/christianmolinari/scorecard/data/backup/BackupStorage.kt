@@ -12,6 +12,7 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.IOException
+import com.christianmolinari.scorecard.domain.BackupRetention
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -43,18 +44,40 @@ class BackupStorage(private val context: Context) {
             return File(base, "Backups").apply { mkdirs() }
         }
 
-    // A timestamped backup file name, e.g. "ScoreCard-Backup-2026-06-01-183000.json".
-    // Local time, like the iOS DateFormatter, so the name reads naturally to the user.
-    fun makeFilename(date: Instant = Instant.now()): String {
+    // A timestamped backup file name ending in the device's tag, e.g.
+    // "ScoreCard-Backup-2026-06-01-183000-a3f19c.json". Local time, like the
+    // iOS DateFormatter, so the name reads naturally to the user.
+    //
+    // The tag is what lets retention prune only the backups this device wrote.
+    // It matters most on iOS, where the folder is shared between devices, but
+    // the convention is identical here because the files interchange.
+    fun makeFilename(date: Instant = Instant.now(), deviceTag: String): String {
         val formatter = DateTimeFormatter
             .ofPattern("yyyy-MM-dd-HHmmss", Locale.US)
             .withZone(ZoneId.systemDefault())
-        return "$FILE_PREFIX${formatter.format(date)}.$FILE_EXTENSION"
+        return "$FILE_PREFIX${formatter.format(date)}-$deviceTag.$FILE_EXTENSION"
+    }
+
+    // Backups this device wrote that fall outside the retention limit. Never
+    // another device's files, nor the untagged ones written before retention
+    // existed.
+    suspend fun prunableBackups(keeping: Int, deviceTag: String): List<BackupFile> =
+        BackupRetention.surplus(listBackups(), deviceTag, keeping) { it.name }
+
+    // Delete those backups, returning the names actually removed. Failures are
+    // swallowed per file: one undeletable backup must not abort the rest, nor
+    // fail the backup that has just been written successfully.
+    suspend fun prune(keeping: Int, deviceTag: String): List<String> {
+        val removed = mutableListOf<String>()
+        for (backup in prunableBackups(keeping, deviceTag)) {
+            if (runCatching { delete(backup.file) }.isSuccess) removed += backup.name
+        }
+        return removed
     }
 
     // Write backup JSON, atomically (write a temp file, then rename) so a
     // crash mid-write can't leave a truncated backup behind.
-    suspend fun write(json: String, filename: String = makeFilename()): File =
+    suspend fun write(json: String, deviceTag: String, filename: String = makeFilename(deviceTag = deviceTag)): File =
         withContext(Dispatchers.IO) {
             val file = File(backupsDir, filename)
             val temp = File(backupsDir, "$filename.tmp")

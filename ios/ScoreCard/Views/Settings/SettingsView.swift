@@ -34,6 +34,16 @@ struct SettingsView: View {
     @AppStorage(ActionLogSize.enabledKey) private var actionLogEnabled = true
     @AppStorage(ActionLogSize.maxMiBKey) private var actionLogMaxMiB = ActionLogSize.defaultMiB
     @State private var showLogDeleteConfirmation = false
+
+    // Backup retention. Only this device's own backups are ever pruned — the
+    // iCloud folder is shared with the user's other devices.
+    @AppStorage(BackupRetention.countKey) private var backupsKept = BackupRetention.defaultKept
+    @State private var pendingPrune: [BackupFile] = []
+    /// The number the last prompt was measured against, so a reduction is
+    /// judged against where the user started rather than the previous detent.
+    @State private var appliedBackupsKept = BackupRetention.storedCount()
+    /// Debounces the wheel: cancelled and restarted on every value it passes.
+    @State private var pruneCheck: Task<Void, Never>?
     /// Re-read after a delete so the row's size stops showing bytes that are gone.
     @State private var logSizeRevision = 0
 
@@ -143,6 +153,30 @@ struct SettingsView: View {
             } message: {
                 Text("This removes the record of past actions from this device. Your players, teams and games are not affected.")
             }
+            .confirmationDialog(pruneTitle,
+                                isPresented: showingPruneConfirmation,
+                                titleVisibility: .visible) {
+                Button("Delete \(pendingPrune.count)", role: .destructive) { commitPrune() }
+                Button("Cancel", role: .cancel) { pendingPrune = [] }
+            } message: {
+                Text(pruneMessage)
+            }
+            // Lowering the number applies now rather than at the next backup,
+            // so the setting always means what it says — but only ever to this
+            // device's own backups, and only after the user agrees.
+            // Spinning the wheel reports every value it passes through, so the
+            // question is asked once the choice settles rather than at each
+            // detent — otherwise winding from ten down to two puts eight
+            // confirmations in the user's way.
+            .onChange(of: backupsKept) { _, newValue in
+                pruneCheck?.cancel()
+                pruneCheck = Task {
+                    try? await Task.sleep(for: .milliseconds(600))
+                    guard !Task.isCancelled else { return }
+                    await evaluatePrune(for: newValue)
+                }
+            }
+            .onDisappear { pruneCheck?.cancel() }
             // A newly lowered maximum applies now, not at the next write.
             .onChange(of: actionLogMaxMiB) { _, newValue in
                 ActionLog.shared.enforceLimit(maxMiB: newValue)
@@ -161,6 +195,17 @@ struct SettingsView: View {
     @ViewBuilder
     private var backupSection: some View {
         Section {
+            Picker("Keep backups", selection: $backupsKept) {
+                ForEach(BackupRetention.minimumKept...BackupRetention.maximumKept, id: \.self) { count in
+                    Text(count == 1 ? "1 (only the latest)" : "\(count)").tag(count)
+                }
+            }
+            // A pushed list rather than an inline wheel: a wheel sitting in a
+            // Form swallows vertical drags, so everything below it becomes
+            // unreachable by scrolling. This still commits in one move, which
+            // is the point — the +/- buttons it replaced asked the question at
+            // every number on the way down.
+            .pickerStyle(.navigationLink)
             Button {
                 Task { await backUpNow() }
             } label: {
@@ -258,6 +303,51 @@ struct SettingsView: View {
         return "Last backup: \(GameFormatting.dateTime(lastBackupDate)) — saved to \(where_)."
     }
 
+    // MARK: - Backup retention
+
+    private var showingPruneConfirmation: Binding<Bool> {
+        Binding(get: { !pendingPrune.isEmpty },
+                set: { if !$0 { pendingPrune = [] } })
+    }
+
+    private var pruneTitle: String {
+        pendingPrune.count == 1 ? "Delete 1 older backup?" : "Delete \(pendingPrune.count) older backups?"
+    }
+
+    private var pruneMessage: String {
+        let oldest = pendingPrune.last.map { GameFormatting.dateTime($0.date) }
+        var message = "Keeping only the \(backupsKept) most recent removes "
+            + (pendingPrune.count == 1 ? "1 backup file" : "\(pendingPrune.count) backup files")
+        if let oldest { message += ", the oldest from \(oldest)" }
+        // Worth saying plainly: the folder is shared, so this is the one thing
+        // the user might reasonably fear, and it is exactly what does not happen.
+        return message + ". Only backups made on this device are removed — any made on your "
+            + "other devices, and any made before this setting existed, are left alone."
+    }
+
+    /// Works out whether the settled number leaves anything to remove, and asks
+    /// if so. Only a *reduction* can, so raising the number never prompts even
+    /// when the folder already holds more files than the new limit.
+    @MainActor
+    private func evaluatePrune(for settled: Int) async {
+        defer { appliedBackupsKept = settled }
+        guard settled < appliedBackupsKept else { return }
+        // Off the main thread: listing backups walks the iCloud ubiquity
+        // container, which BackupStorage warns can block.
+        pendingPrune = await Task.detached {
+            BackupStorage.prunableBackups(keeping: settled)
+        }.value
+    }
+
+    private func commitPrune() {
+        let doomed = pendingPrune
+        pendingPrune = []
+        for backup in doomed {
+            guard (try? BackupStorage.delete(backup.url)) != nil else { continue }
+            ActionLogRecorder.note("backupPruned", name: backup.name)
+        }
+    }
+
     // MARK: - Actions
 
     private func backUpNow() async {
@@ -268,6 +358,10 @@ struct SettingsView: View {
             let saved = try await Task.detached { try BackupStorage.write(data) }.value
             lastBackup = saved
             lastBackupDate = .now
+            // Trim this device's older backups now the new one is safely written.
+            let kept = backupsKept
+            let pruned = await Task.detached { BackupStorage.prune(keeping: kept) }.value
+            for name in pruned { ActionLogRecorder.note("backupPruned", name: name) }
             let location = saved.isICloud ? "iCloud Drive" : "this device"
             statusMessage = StatusMessage(title: "Backup Complete",
                                           body: "Saved \(players.count) players, \(teams.count) teams, and \(games.count) games to \(location).")

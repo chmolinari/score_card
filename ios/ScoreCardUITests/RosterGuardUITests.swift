@@ -203,7 +203,14 @@ final class RosterGuardUITests: XCTestCase {
         field.tap()
         field.typeText(name)
         app.buttons["Save"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 5))
+        // Assert the sheet actually closed before trusting the name below.
+        // Without this a rejected save leaves the editor up and the name check
+        // still passes by matching the text field's own contents — which is how
+        // a player silently failed to be created and only surfaced much later,
+        // as a team editor that would not accept its second member.
+        waitForDisappearance(field, "The player editor should close after saving \(name)")
+        XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 10),
+                      "\(name) should be listed on the Players tab")
     }
 
     @MainActor

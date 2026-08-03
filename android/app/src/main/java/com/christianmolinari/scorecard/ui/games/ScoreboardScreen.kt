@@ -62,6 +62,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,6 +89,7 @@ import com.christianmolinari.scorecard.domain.subtitle
 import com.christianmolinari.scorecard.ui.components.AppBackground
 import com.christianmolinari.scorecard.ui.components.Avatar
 import com.christianmolinari.scorecard.ui.components.CardTile
+import com.christianmolinari.scorecard.ui.components.GameFormatting
 import com.christianmolinari.scorecard.ui.components.PlayfulSectionHeader
 import com.christianmolinari.scorecard.ui.theme.ThemeColors
 import java.time.Instant
@@ -754,12 +757,23 @@ private fun ScoreboardRow(
         // scored this hand (reopened by Next Hand) and while the target is
         // reached; the ellipsis always stays live so the detail sheet — where
         // scores are corrected — remains reachable.
+        //
+        // Every button here is named after the competitor whose row it sits in.
+        // The visible labels ("+5", an ellipsis) repeat identically down the
+        // board, so without this a screen reader announces five
+        // indistinguishable "More scoring options" buttons, and a UI test could
+        // only reach a row by index.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(1, 2, 3, 5).forEach { amount ->
                 OutlinedButton(
                     onClick = { onScore(amount) },
                     enabled = !scoringDisabled,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics {
+                            contentDescription =
+                                "Add ${GameFormatting.points(amount)} to ${participant.displayName}"
+                        },
                     contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ThemeColors.teal),
                 ) {
@@ -768,15 +782,22 @@ private fun ScoreboardRow(
             }
             OutlinedButton(
                 onClick = onTapMore,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics {
+                        contentDescription = "More scoring options for ${participant.displayName}"
+                    },
                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
             ) {
+                // Null here, not a label: the button above carries the
+                // description, and a second one on the icon would leave the
+                // merged node announcing both.
                 Icon(
                     imageVector = Icons.Filled.MoreHoriz,
-                    contentDescription = "More scoring options",
+                    contentDescription = null,
                     modifier = Modifier.size(18.dp),
                 )
             }

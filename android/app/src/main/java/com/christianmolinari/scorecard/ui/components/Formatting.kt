@@ -56,4 +56,8 @@ object GameFormatting {
 
     // "+3" for positive deltas; zero and negatives already read correctly.
     fun signedPoints(value: Int): String = if (value > 0) "+$value" else value.toString()
+
+    // "1 point" / "3 points", for the accessibility names of the scoring
+    // buttons, whose visible labels are bare numbers that repeat down the board.
+    fun points(value: Int): String = if (value == 1) "$value point" else "$value points"
 }

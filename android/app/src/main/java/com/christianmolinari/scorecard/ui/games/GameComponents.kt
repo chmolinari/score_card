@@ -53,6 +53,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -277,6 +279,10 @@ fun ParticipantScoringSheet(
                 )
             }
 
+            // The buttons in both rows are named as well as labelled: "+1" and
+            // "-1" read the same aloud, and the sheet is already scoped to one
+            // competitor, so the name carries the direction rather than the
+            // person (the scoreboard's own row buttons name the person).
             PlayfulSectionHeader(title = "Quick Add")
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -285,7 +291,9 @@ fun ParticipantScoringSheet(
                 quickAmounts.forEach { amount ->
                     Button(
                         onClick = { add(amount) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Add ${GameFormatting.points(amount)}" },
                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                     ) {
                         Text("+$amount")
@@ -302,7 +310,9 @@ fun ParticipantScoringSheet(
                     Button(
                         onClick = { add(-amount) },
                         enabled = !subtractionBlocked,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Subtract ${GameFormatting.points(amount)}" },
                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.error,
